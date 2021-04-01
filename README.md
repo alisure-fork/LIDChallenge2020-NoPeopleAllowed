@@ -67,7 +67,7 @@ Step 6. **Segmentation model training.**
 In this step we train segmentation model using the pseudo-segmentation maps obtained in the previous step.
 To train the classification model run the following command:
 ```
-python model_training/cam_generation/train_imagenet.py
+python model_training/segmentation/train_imagenet.py
 ```
 The path to corresponding config: *model_training/segmentation/config/imagenet.yaml* 
 

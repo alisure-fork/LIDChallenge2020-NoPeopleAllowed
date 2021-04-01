@@ -5,6 +5,7 @@ import numpy as np
 
 from .common import read_img, read_mask
 
+
 __all__ = [
     "ImageNetMLC",
     "ImageNetMLCVal",
@@ -85,6 +86,8 @@ class ImageNetHuman(torch.utils.data.Dataset):
             return image, label, basename, shape
         return image, label, basename
 
+    pass
+
 
 class ImageNetMLCVal(torch.utils.data.Dataset):
     """ImageNet dataset for multi-label classification"""
@@ -159,20 +162,10 @@ class ImageNetIAL(torch.utils.data.Dataset):
         image = self.transform(image, None).permute(2, 0, 1)
         image_shape = image.shape[-1]
 
-        mask = torch.zeros(
-            self.num_classes,
-            image_shape // self.MASK_STRIDE,
-            image_shape // self.MASK_STRIDE,
-        )
+        mask = torch.zeros(self.num_classes, image_shape // self.MASK_STRIDE, image_shape // self.MASK_STRIDE)
         for cl in labels:
-            activation = (
-                torch.FloatTensor(
-                    read_mask(
-                        os.path.join(self.attention_path, f"{basename}_{cl - 1}.png")
-                    )
-                )
-                / 255
-            )
+            activation = (torch.tensor(read_mask(os.path.join(
+                self.attention_path, "{}_{}.png".format(basename, cl - 1)))).float() / 255)
             mask[cl - 1] = activation.squeeze()
 
         rv = [image, mask]
@@ -214,3 +207,5 @@ class ImageNetSegmentation(torch.utils.data.Dataset):
         if self.transform is not None:
             image, mask = self.transform(image, mask)
         return image.permute(2, 0, 1), mask.permute(2, 0, 1).squeeze(0)
+
+    pass
