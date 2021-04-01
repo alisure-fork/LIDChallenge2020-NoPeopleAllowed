@@ -23,6 +23,7 @@ class UnNormalize(object):
             t.mul_(s).add_(m)
             # The normalize code -> t.sub_(m).div_(s)
         return tensor_copy.transpose(1, 0)
+    pass
 
 
 output_format = {
@@ -36,27 +37,22 @@ output_format = {
 normalization = {
     "none": lambda array: array,
     "float": lambda array: array / 255.0,
-    "default": lambda array: albu.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )(image=array)["image"],
+    "default": lambda array: albu.Normalize(mean=[0.485, 0.456, 0.406],
+                                            std=[0.229, 0.224, 0.225])(image=array)["image"],
     "binary": lambda array: np.array(array > 0, np.float32),
 }
 
 denormalization = {
     "none": lambda array: array,
     "float": lambda array: array,
-    "default": lambda array: UnNormalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )(array),
+    "default": lambda array: UnNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(array),
 }
 
 augmentations = {
     "strong": albu.Compose(
         [
             albu.HorizontalFlip(),
-            albu.ShiftScaleRotate(
-                shift_limit=0.0, scale_limit=0.2, rotate_limit=30, p=0.4
-            ),
+            albu.ShiftScaleRotate(shift_limit=0.0, scale_limit=0.2, rotate_limit=30, p=0.4),
             albu.ElasticTransform(),
             albu.GaussNoise(),
             albu.OneOf(
@@ -75,9 +71,7 @@ augmentations = {
     "irnet": albu.Compose(
         [
             albu.HorizontalFlip(),
-            albu.ShiftScaleRotate(
-                shift_limit=0.0, scale_limit=0.2, rotate_limit=30, p=0.4
-            ),
+            albu.ShiftScaleRotate(shift_limit=0.0, scale_limit=0.2, rotate_limit=30, p=0.4),
             albu.ElasticTransform(),
             albu.GaussNoise(),
         ]
@@ -87,15 +81,8 @@ augmentations = {
         [
             albu.HorizontalFlip(p=0.5),
             albu.OneOf([albu.RandomBrightnessContrast(), albu.RandomGamma(),], p=0.3),
-            albu.OneOf(
-                [
-                    albu.ElasticTransform(
-                        alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03
-                    ),
-                    albu.OpticalDistortion(distort_limit=2, shift_limit=0.5),
-                ],
-                p=0.3,
-            ),
+            albu.OneOf([albu.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
+                        albu.OpticalDistortion(distort_limit=2, shift_limit=0.5),], p=0.3),
         ]
     ),
     "horizontal_flip": albu.HorizontalFlip(p=0.5),
@@ -104,13 +91,10 @@ augmentations = {
 
 size_augmentations = {
     "none": lambda size: albu.NoOp(),
-    "resize": lambda size: albu.Resize(
-        height=size, width=size, interpolation=cv2.INTER_AREA
-    ),
+    "resize": lambda size: albu.Resize(height=size, width=size, interpolation=cv2.INTER_AREA),
     "center": lambda size: albu.CenterCrop(size, size),
-    "crop_or_resize": lambda size: albu.OneOf(
-        [albu.RandomCrop(size, size), albu.Resize(height=size, width=size)], p=1
-    ),
+    "crop_or_resize": lambda size: albu.OneOf([albu.RandomCrop(size, size),
+                                               albu.Resize(height=size, width=size)], p=1),
 }
 
 
@@ -129,16 +113,10 @@ def get_transforms(config: Dict):
 
     def process(image, mask):
         r = aug(image=image, mask=mask)
-        transformed_image = output_format[images_output_format_type](
-            normalization[images_normalization](r["image"])
-        )
+        transformed_image = output_format[images_output_format_type](normalization[images_normalization](r["image"]))
         if r["mask"] is not None:
-            transformed_mask = output_format[masks_output_format_type](
-                normalization[masks_normalization](r["mask"])
-            )
-
+            transformed_mask = output_format[masks_output_format_type](normalization[masks_normalization](r["mask"]))
             return transformed_image, transformed_mask
-
         else:
             return transformed_image
 

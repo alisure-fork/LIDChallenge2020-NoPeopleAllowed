@@ -33,24 +33,23 @@ class ActivationExtractor:
         self.model = self.model.to(device)
         self.model.eval()
 
-        self.maps_weights = getattr(
-            self.model, config["weights_layer"]
-        ).weight  # shape: [num_classes, K] K - number of kernel filters
+        self.maps_weights = getattr(self.model, config["weights_layer"]).weight  # shape: [num_classes, K] K - number of kernel filters
         self.interpolation_mode = config["interpolation"]
         self.use_predicted_labels = config["use_predicted_labels"]
         self.denorm = denormalization["default"]
 
         self.maps = None
-        getattr(self.model, config["maps_layer"]).register_forward_hook(
-            self.save_maps_forward
-        )
+        getattr(self.model, config["maps_layer"]).register_forward_hook(self.save_maps_forward)
+        pass
 
     def save_maps_forward(self, module, input_tensor, output_tensor):
         self.maps = output_tensor.detach()
+        pass
 
     def extract(self):
         self._run(self.train_dl, prefix="train")
         self._run(self.val_dl, prefix="val")
+        pass
 
     @torch.no_grad()
     def _run(self, dl, prefix="train"):
@@ -68,24 +67,17 @@ class ActivationExtractor:
                 no_class_idx = torch.where(torch.sum(y_pred, dim=1) == 0)[0]
                 y_pred[no_class_idx, y_pred_max_idx[no_class_idx]] = 1
                 y = y_pred
+                pass
 
             X = self.denorm(X).permute(0, 2, 3, 1)
-            for image, name, activation_maps, classes, shape, in zip(
-                X, image_names, self.maps, y, shapes
-            ):
-                self._process_single_image(
-                    image,
-                    activation_maps,
-                    classes,
-                    name,
-                    (height, width),
-                    shape,
-                    prefix=prefix,
-                )
+            for image, name, activation_maps, classes, shape, in zip(X, image_names, self.maps, y, shapes):
+                self._process_single_image(image, activation_maps, classes,
+                                           name, (height, width), shape, prefix=prefix)
+                pass
+            pass
+        pass
 
-    def _process_single_image(
-        self, image, activation_maps, classes, name, size, original_shape, prefix
-    ):
+    def _process_single_image(self, image, activation_maps, classes, name, size, original_shape, prefix):
         """
         Save segmentation map for single image
         Args:
@@ -98,18 +90,12 @@ class ActivationExtractor:
         image = (image * 255).type(torch.uint8).cpu().numpy()
 
         maps_weights = self.maps_weights[classes == 1]  # shape: [true_classes, K]
-        seg_maps = torch.tensordot(
-            maps_weights, activation_maps, dims=((1,), (0,))
-        )  # shape: [true_classes, H_s, W_s]
+        seg_maps = torch.tensordot(maps_weights, activation_maps, dims=((1,), (0,)))  # shape: [true_classes, H_s, W_s]
 
         save_path = os.path.join(self.config[prefix]["output_path"], name + ".png")
-        seg_maps = F.interpolate(
-            seg_maps[None], size, mode=self.interpolation_mode, align_corners=False
-        )[0]
+        seg_maps = F.interpolate(seg_maps[None], size, mode=self.interpolation_mode, align_corners=False)[0]
 
-        class_labels = (
-            torch.where(classes == 1)[0].type(torch.float32) + 1
-        )  # e.g. [2, 7, 20]
+        class_labels = (torch.where(classes == 1)[0].type(torch.float32) + 1)  # e.g. [2, 7, 20]
 
         seg_maps = seg_maps.cpu().numpy()
         final_maps = np.zeros_like(seg_maps, dtype=np.uint8)
@@ -118,12 +104,10 @@ class ActivationExtractor:
 
         max_idx = np.argmax(seg_maps, axis=0)
         seg_maps_max = linidx_take(final_maps, max_idx)
-        seg_maps_max = cv2.resize(
-            seg_maps_max,
-            (original_shape[1].item(), original_shape[0].item()),
-            interpolation=cv2.INTER_NEAREST,
-        )
+        seg_maps_max = cv2.resize(seg_maps_max, (original_shape[1].item(), original_shape[0].item()),
+                                  interpolation=cv2.INTER_NEAREST)
         cv2.imwrite(save_path, seg_maps_max)
+        pass
 
     @staticmethod
     def grub_cut_mask(image, seg_map, label):
@@ -138,9 +122,7 @@ class ActivationExtractor:
         bgdModel = np.zeros((1, 65), np.float64)
         fgdModel = np.zeros((1, 65), np.float64)
 
-        mask, _, _ = cv2.grabCut(
-            image, new_mask, None, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK
-        )
-        return np.where(
-            (mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 0, label.item()
-        ).astype("uint8")
+        mask, _, _ = cv2.grabCut(image, new_mask, None, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK)
+        return np.where((mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 0, label.item()).astype("uint8")
+
+    pass

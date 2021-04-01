@@ -11,6 +11,23 @@ from alisuretool.Tools import Tools
 from torch.utils.data import Dataset
 
 
+class UnNormalize(object):
+
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+        pass
+
+    def __call__(self, tensor):
+        new_tensor = tensor.clone()
+        for t, m, s in zip(new_tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+        np_data = np.asarray(new_tensor.permute(1, 2, 0).numpy() * 255, dtype=np.uint8)
+        return Image.fromarray(np_data)
+
+    pass
+
+
 class DataUtil(object):
 
     @staticmethod
@@ -40,19 +57,23 @@ class DataUtil(object):
 class MyTransform(object):
 
     @staticmethod
-    def transform_normalize():
+    def normalize():
         return transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+    @classmethod
+    def transform_un_normalize(cls):
+        return transforms.Compose([UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
     @classmethod
     def transform_train_cam(cls, image_size=352):
         transform_train = transforms.Compose([transforms.RandomResizedCrop(size=image_size),
                                               transforms.RandomHorizontalFlip(),
-                                              transforms.ToTensor(), cls.transform_normalize()])
+                                              transforms.ToTensor(), cls.normalize()])
         transform_test = transforms.Compose([transforms.Resize(size=256),
                                              transforms.CenterCrop(224),
-                                             transforms.ToTensor(), cls.transform_normalize()])
+                                             transforms.ToTensor(), cls.normalize()])
         # transform_test = transforms.Compose([transforms.Resize(size=image_size),
-        #                                      transforms.ToTensor(), cls.transform_normalize()])
+        #                                      transforms.ToTensor(), cls.normalize()])
         return transform_train, transform_test
 
     pass
