@@ -141,7 +141,7 @@ class CAMRunner(object):
         """
 
 
-        mae, f1 = 0.0, 0.0
+        acc, mae, f1 = 0.0, 0.0, 0.0
         self.net.eval()
         with torch.no_grad():
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_mlc_val), total=len(self.data_loader_mlc_val)):
@@ -153,17 +153,20 @@ class CAMRunner(object):
                 one, zero = labels == 1, labels != 1
                 now_mae = (np.abs(net_out[one] - labels[one]).mean() + np.abs(net_out[zero] - labels[zero]).mean()) / 2
                 now_f1 = metrics.f1_score(y_true=labels, y_pred=net_out > 0.5, average='micro')
+                now_acc = self._acc(net_out=net_out, labels=labels)
 
-                mae += now_mae
                 f1 += now_f1
+                mae += now_mae
+                acc += now_acc
                 pass
             pass
 
         mae = mae / len(self.data_loader_mlc_val)
         f1 = f1 / len(self.data_loader_mlc_val)
-        Tools.print("[E:{:3d}] val mae:{:.4f} f1:{:.4f}".format(epoch, mae, f1),
+        acc = acc / len(self.data_loader_mlc_val)
+        Tools.print("[E:{:3d}] val mae:{:.4f} f1:{:.4f} acc:{:.4f}".format(epoch, mae, f1, acc),
                     txt_path=self.config.mlc_save_result_txt)
-        return [mae, f1]
+        return [mae, f1, acc]
 
     def load_model(self, model_file_name):
         Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.mlc_save_result_txt)
@@ -179,6 +182,18 @@ class CAMRunner(object):
                 param_group['lr'] = lr * 0.1
                 pass
         pass
+
+    @staticmethod
+    def _acc(net_out, labels):
+        acc_num, total_num = 0, 0
+        for out_one, label_one in zip(net_out, labels):
+            label_set = list(np.where(label_one)[0])
+            out_set = list(np.where(out_one > 0.5)[0])
+            all_num = len(label_set) + len(out_set)
+            ok_num = (all_num - len(set(out_set + label_set)))
+            acc_num += 2 * ok_num
+            total_num += all_num
+        return acc_num / total_num
 
     pass
 
@@ -208,12 +223,12 @@ class Config(object):
         self.has_train_mlc = True  # 是否训练MLC
 
         self.mlc_num_classes = 200
-        self.mlc_epoch_num = 60
-        self.mlc_change_epoch = 30
+        self.mlc_epoch_num = 20
+        self.mlc_change_epoch = 10
         self.mlc_batch_size = 32 * len(self.gpu_id.split(","))
         self.mlc_lr = 0.0001
-        self.mlc_save_epoch_freq = 5
-        self.mlc_eval_epoch_freq = 5
+        self.mlc_save_epoch_freq = 2
+        self.mlc_eval_epoch_freq = 2
 
         # 图像大小
         self.mlc_size = 256
@@ -249,6 +264,7 @@ class Config(object):
 
 """
 1/20 val mae:0.0775 f1:0.9067 ../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth
+1/1  val mae:0.1017 f1:0.8701 ../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_40.pth
 """
 
 
