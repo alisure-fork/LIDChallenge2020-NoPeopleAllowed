@@ -1,5 +1,6 @@
 import os
 import sys
+import cv2
 import glob
 import torch
 import random
@@ -25,8 +26,7 @@ class CAMRunner(object):
         self.transform_un_normalize = MyTransform.transform_un_normalize()
         pass
 
-    # 1.训练MIC
-    def demo_mlc(self, image_filename_list, model_file_name=None):
+    def demo_mlc_cam(self, image_filename_list, model_file_name=None):
         Tools.print("Load model form {}".format(model_file_name))
         self.load_model(model_file_name)
 
@@ -84,6 +84,22 @@ class CAMRunner(object):
             pass
         return cam_list
 
+    @staticmethod
+    def grub_cut_mask(image, cam, label):
+        x1, x2, x3 = np.percentile(cam, [15, 70, 99.5])
+        new_mask = np.zeros(cam.shape, dtype=np.uint8)
+
+        new_mask[cam > x3] = cv2.GC_FGD
+        new_mask[cam <= x3] = cv2.GC_PR_FGD
+        new_mask[cam <= x2] = cv2.GC_PR_BGD
+        new_mask[cam <= x1] = cv2.GC_BGD
+
+        bgdModel = np.zeros((1, 65), np.float64)
+        fgdModel = np.zeros((1, 65), np.float64)
+
+        mask, _, _ = cv2.grabCut(image, new_mask, None, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK)
+        return np.where((mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 0, label.item()).astype("uint8")
+
     def load_model(self, model_file_name):
         Tools.print("Load model form {}".format(model_file_name))
         checkpoint = torch.load(model_file_name)
@@ -102,9 +118,9 @@ class CAMRunner(object):
 
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
-    cam_runner = CAMRunner(image_size=256, num_classes=200)
+    cam_runner = CAMRunner(image_size=224, num_classes=200)
 
     data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data/ILSVRC2017_DET/ILSVRC/Data/DET"
     image_filename_list = ["train/ILSVRC2014_train_0006/ILSVRC2014_train_00060002.JPEG",
@@ -113,6 +129,6 @@ if __name__ == '__main__':
                            "train/ILSVRC2014_train_0006/ILSVRC2014_train_00060127.JPEG"]
     all_image_file = [os.path.join(data_root, image_filename) for image_filename in image_filename_list]
 
-    cam_runner.demo_mlc(image_filename_list=all_image_file,
-                        model_file_name="../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth")
+    cam_runner.demo_mlc_cam(image_filename_list=all_image_file,
+                            model_file_name="../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth")
     pass
