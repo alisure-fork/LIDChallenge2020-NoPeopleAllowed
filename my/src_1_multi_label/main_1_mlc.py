@@ -216,8 +216,8 @@ class Config(object):
         self.mlc_eval_epoch_freq = 5
 
         # 图像大小
-        # self.mlc_size = 256
-        self.mlc_size = 224
+        self.mlc_size = 256
+        # self.mlc_size = 224
 
         # 网络
         self.Net = CAMNet

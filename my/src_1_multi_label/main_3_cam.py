@@ -104,7 +104,7 @@ class CAMRunner(object):
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
-    cam_runner = CAMRunner(image_size=224, num_classes=200)
+    cam_runner = CAMRunner(image_size=256, num_classes=200)
 
     data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data/ILSVRC2017_DET/ILSVRC/Data/DET"
     image_filename_list = ["train/ILSVRC2014_train_0006/ILSVRC2014_train_00060002.JPEG",

@@ -16,7 +16,7 @@ from util_data import DatasetUtil, MyTransform, DataUtil
 
 class CAMRunner(object):
 
-    def __init__(self, image_size=224, num_classes=200):
+    def __init__(self, image_size=256, num_classes=200):
         self.image_size = image_size
         self.net = CAMNet(num_classes=num_classes).cuda()
 

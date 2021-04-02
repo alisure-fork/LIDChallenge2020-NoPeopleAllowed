@@ -65,15 +65,15 @@ class MyTransform(object):
         return transforms.Compose([UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
     @classmethod
-    def transform_train_cam(cls, image_size=352):
+    def transform_train_cam(cls, image_size=256):
         transform_train = transforms.Compose([transforms.RandomResizedCrop(size=image_size),
                                               transforms.RandomHorizontalFlip(),
                                               transforms.ToTensor(), cls.normalize()])
-        transform_test = transforms.Compose([transforms.Resize(size=256),
-                                             transforms.CenterCrop(224),
-                                             transforms.ToTensor(), cls.normalize()])
-        # transform_test = transforms.Compose([transforms.Resize(size=image_size),
+        # transform_test = transforms.Compose([transforms.Resize(size=256),
+        #                                      transforms.CenterCrop(224),
         #                                      transforms.ToTensor(), cls.normalize()])
+        transform_test = transforms.Compose([transforms.Resize(size=(image_size, image_size)),
+                                             transforms.ToTensor(), cls.normalize()])
         return transform_train, transform_test
 
     pass
@@ -140,7 +140,7 @@ class DatasetUtil(object):
 
 
 if __name__ == '__main__':
-    dataset_mlc_train = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_mlc_train, image_size=352)
-    dataset_mlc_val = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_mlc_val, image_size=352)
+    dataset_mlc_train = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_mlc_train, image_size=256)
+    dataset_mlc_val = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_mlc_val, image_size=256)
     dataset_mlc_train.__getitem__(0)
     pass
