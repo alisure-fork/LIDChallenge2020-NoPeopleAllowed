@@ -226,13 +226,12 @@ class Config(object):
         self.mlc_epoch_num = 20
         self.mlc_change_epoch = 10
         self.mlc_batch_size = 32 * len(self.gpu_id.split(","))
-        self.mlc_lr = 0.0001
+        self.mlc_lr = 0.00001
         self.mlc_save_epoch_freq = 2
         self.mlc_eval_epoch_freq = 2
 
         # 图像大小
-        self.mlc_size = 256
-        # self.mlc_size = 224
+        self.mlc_size = 224
 
         # 网络
         self.Net = CAMNet

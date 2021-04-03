@@ -112,16 +112,20 @@ class MyTransform(object):
         return transforms.Compose([UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
     @classmethod
-    def transform_train_cam(cls, image_size=256):
+    def transform_train_cam(cls, image_size=224):
         transform_train = transforms.Compose([transforms.RandomResizedCrop(size=image_size),
                                               transforms.RandomHorizontalFlip(),
                                               transforms.ToTensor(), cls.normalize()])
-        # transform_test = transforms.Compose([transforms.Resize(size=256),
-        #                                      transforms.CenterCrop(224),
-        #                                      transforms.ToTensor(), cls.normalize()])
-        transform_test = transforms.Compose([transforms.Resize(size=(image_size, image_size)),
+        transform_test = transforms.Compose([transforms.Resize(size=256),
+                                             transforms.CenterCrop(image_size),
                                              transforms.ToTensor(), cls.normalize()])
         return transform_train, transform_test
+
+    @classmethod
+    def transform_vis_cam(cls, image_size=256):
+        transform_test = transforms.Compose([transforms.Resize(size=(image_size, image_size)),
+                                             transforms.ToTensor(), cls.normalize()])
+        return transform_test
 
     pass
 
@@ -159,12 +163,14 @@ class DatasetUtil(object):
 
     dataset_type_mlc_train = "mlc_train"
     dataset_type_mlc_val = "mlc_val"
+    dataset_type_vis_cam = "vis_cam"
 
     @classmethod
     def get_dataset_by_type(cls, dataset_type, image_size,
                             data_root="/media/ubuntu/4T/ALISURE/Data/L2ID/data", return_image_info=False):
-        # data_info = DataUtil.get_data_info(data_root=data_root)[::20]
-        data_info = DataUtil.get_data_info(data_root=data_root)
+        data_info = DataUtil.get_data_info(data_root=data_root)[::20]
+
+        # data_info = DataUtil.get_data_info(data_root=data_root)
         label_image_path = [[[one_object[2] for one_object in one_data["object"]],
                              one_data["image_path"]] for one_data in data_info]
 
@@ -173,6 +179,9 @@ class DatasetUtil(object):
                                               return_image_info=return_image_info)
         elif dataset_type == cls.dataset_type_mlc_val:
             return cls.get_imagenet_mlc_val(label_image_path, image_size=image_size,
+                                            return_image_info=return_image_info)
+        elif dataset_type == cls.dataset_type_vis_cam:
+            return cls.get_imagenet_vis_cam(label_image_path, image_size=image_size,
                                             return_image_info=return_image_info)
         else:
             raise Exception("....")
@@ -191,6 +200,13 @@ class DatasetUtil(object):
         imagenet_mlc = ImageNetMLC(images_list=label_image_path, num_classes=200,
                                    transform=transform_test, return_image_info=return_image_info)
         return imagenet_mlc
+
+    @staticmethod
+    def get_imagenet_vis_cam(label_image_path, image_size, return_image_info):
+        transform_test = MyTransform.transform_vis_cam(image_size=image_size)
+        imagenet_cam = ImageNetMLC(images_list=label_image_path, num_classes=200,
+                                   transform=transform_test, return_image_info=return_image_info)
+        return imagenet_cam
 
     pass
 
