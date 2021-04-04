@@ -25,7 +25,7 @@ class CAMRunner(object):
 
         self.dataset_vis_cam = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_vis_cam, image_size=self.config.mlc_size,
-            data_root=self.config.data_root_path, return_image_info=True)
+            data_root=self.config.data_root_path, return_image_info=True, sampling=self.config.sampling)
         self.data_loader_vis_cam = DataLoader(self.dataset_vis_cam, self.config.mlc_batch_size,
                                                 shuffle=False, num_workers=16)
         self.transform_un_normalize = MyTransform.transform_un_normalize()
@@ -186,6 +186,7 @@ class Config(object):
         # self.model_file_name = "../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth"
         self.mlc_size = 256
         self.model_file_name = "../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_20.pth"
+        self.sampling = True
 
         run_name = "1"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(

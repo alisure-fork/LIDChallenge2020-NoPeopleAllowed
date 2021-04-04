@@ -37,7 +37,15 @@ class CAMRunner(object):
         self.net = nn.DataParallel(self.net).cuda()
         cudnn.benchmark = True
 
-        self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.mlc_lr, betas=(0.9, 0.999), weight_decay=0)
+        # 不同层设置不同的学习率
+        head_conv = list(map(id, self.net.module.head_conv.parameters()))
+        head_linear = list(map(id, self.net.module.head_linear.parameters()))
+        base_params = filter(lambda p: id(p) not in head_conv + head_linear, self.net.module.parameters())
+        self.optimizer = optim.Adam([
+            {'params': base_params},
+            {'params': self.net.module.head_conv.parameters(), 'lr': self.config.mlc_lr * 10},
+            {'params': self.net.module.head_linear.parameters(), 'lr': self.config.mlc_lr * 10}],
+            lr=self.config.mlc_lr, betas=(0.9, 0.999), weight_decay=0)
 
         # Loss
         self.bce_loss = nn.BCEWithLogitsLoss().cuda()
@@ -57,7 +65,7 @@ class CAMRunner(object):
             Tools.print()
             self._adjust_learning_rate(self.optimizer, epoch, lr=self.config.mlc_lr,
                                        change_epoch=self.config.mlc_change_epoch)
-            Tools.print('Epoch:{:03d}, lr={:.5f}'.format(epoch, self.optimizer.param_groups[0]['lr']),
+            Tools.print('Epoch:{:03d}, lr={:.6f}'.format(epoch, self.optimizer.param_groups[0]['lr']),
                         txt_path=self.config.mlc_save_result_txt)
 
             ###########################################################################
@@ -79,7 +87,7 @@ class CAMRunner(object):
                 all_loss += loss.item()
                 pass
 
-            Tools.print("[E:{:3d}/{:3d}] mlc loss:{:.3f}".format(
+            Tools.print("[E:{:3d}/{:3d}] mlc loss:{:.4f}".format(
                 epoch, self.config.mlc_epoch_num, all_loss/len(self.data_loader_mlc_train)),
                 txt_path=self.config.mlc_save_result_txt)
 
@@ -213,17 +221,17 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "0, 1, 2, 3"
+        # self.gpu_id = "0, 1, 2, 3"
         # self.gpu_id = "0"
         # self.gpu_id = "0, 1"
-        # self.gpu_id = "2, 3"
+        self.gpu_id = "1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
         self.has_train_mlc = True  # 是否训练MLC
 
         self.mlc_num_classes = 200
-        self.mlc_epoch_num = 20
+        self.mlc_epoch_num = 15
         self.mlc_change_epoch = 10
         self.mlc_batch_size = 32 * len(self.gpu_id.split(","))
         self.mlc_lr = 0.00001
@@ -264,6 +272,7 @@ class Config(object):
 """
 1/20 val mae:0.0775 f1:0.9067 ../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth
 1/1  val mae:0.1017 f1:0.8701 ../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_40.pth
+1/1  val mae:0.0830 f1:0.8742 ../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth
 """
 
 
