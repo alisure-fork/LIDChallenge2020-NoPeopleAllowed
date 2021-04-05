@@ -7,7 +7,7 @@ from torchvision import models
 import torch.nn.functional as F
 from alisuretool.Tools import Tools
 from torch.utils.data import DataLoader, Dataset
-from deep_labv3plus_pytorch.network.modeling import deeplabv3plus_resnet50
+from deep_labv3plus_pytorch.network.modeling import deeplabv3plus_resnet50, deeplabv3plus_resnet101
 
 
 class ConvBlock(nn.Module):
@@ -79,9 +79,10 @@ class DeepLabV3Plus(nn.Module):
 
     def __init__(self, num_classes, output_stride=8):
         super().__init__()
-        self.model = deeplabv3plus_resnet50(num_classes=num_classes,
-                                            output_stride=output_stride, pretrained_backbone=True)
-        self.set_bn_momentum(self.model.backbone, momentum=0.01)
+        # self.model = deeplabv3plus_resnet50(num_classes=num_classes,
+        #                                     output_stride=output_stride, pretrained_backbone=True)
+        self.model = deeplabv3plus_resnet101(num_classes=num_classes,
+                                             output_stride=output_stride, pretrained_backbone=True)
         pass
 
     def forward(self, x):
@@ -90,13 +91,5 @@ class DeepLabV3Plus(nn.Module):
 
     def get_params_groups(self):
         return list(self.model.backbone.parameters()), list(self.model.classifier.parameters())
-
-    @staticmethod
-    def set_bn_momentum(model, momentum=0.1):
-        for m in model.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.momentum = momentum
-            pass
-        pass
 
     pass

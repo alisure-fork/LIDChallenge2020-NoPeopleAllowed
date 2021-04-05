@@ -440,8 +440,18 @@ class MyTransform(object):
             ExtRandomScale((0.5, 2.0)), ExtRandomCrop(size=(image_size, image_size), pad_if_needed=True),
             ExtRandomHorizontalFlip(), ExtToTensor(),
             ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transform_test = ExtCompose([ExtResize(size=image_size), ExtToTensor(),
+                                     ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        return transform_train, transform_test
+
+    @classmethod
+    def transform_train_voc_ss_center(cls, image_size=256):
+        transform_train = ExtCompose([
+            ExtRandomScale((0.5, 2.0)), ExtRandomCrop(size=(image_size, image_size), pad_if_needed=True),
+            ExtRandomHorizontalFlip(), ExtToTensor(),
+            ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         transform_test = ExtCompose([
-            ExtResize(size=(image_size, image_size)), ExtToTensor(),
+            ExtResize(size=image_size), ExtCenterCrop(size=image_size), ExtToTensor(),
             ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         return transform_train, transform_test
 
@@ -537,6 +547,7 @@ class DatasetUtil(object):
     dataset_type_vis_cam = "vis_cam"
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
+    dataset_type_ss_voc_val_center = "ss_voc_val_center"
 
     @classmethod
     def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, return_image_info=False, sampling=False):
@@ -552,15 +563,13 @@ class DatasetUtil(object):
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[[one_object[2] for one_object in one_data["object"]],
                                  one_data["image_path"]] for one_data in data_info]
-            return cls._get_imagenet_mlc_val(label_image_path, image_size=image_size,
-                                             return_image_info=return_image_info)
+            return cls._get_imagenet_mlc_val(label_image_path, image_size, return_image_info=return_image_info)
         elif dataset_type == cls.dataset_type_vis_cam:
             data_info = DataUtil.get_data_info(data_root=data_root)
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[[one_object[2] for one_object in one_data["object"]],
                                  one_data["image_path"]] for one_data in data_info]
-            return cls._get_imagenet_vis_cam(label_image_path, image_size=image_size,
-                                             return_image_info=return_image_info)
+            return cls._get_imagenet_vis_cam(label_image_path, image_size, return_image_info=return_image_info)
         elif dataset_type == cls.dataset_type_ss_voc_train:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
             data_info = data_info[::20] if sampling else data_info
@@ -571,6 +580,11 @@ class DatasetUtil(object):
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             return cls._get_voc_ss_val(label_image_path, image_size, return_image_info=return_image_info)
+        elif dataset_type == cls.dataset_type_ss_voc_val_center:
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            return cls._get_voc_ss_val_center(label_image_path, image_size, return_image_info=return_image_info)
         else:
             raise Exception("....")
         pass
@@ -584,6 +598,12 @@ class DatasetUtil(object):
     @staticmethod
     def _get_voc_ss_val(label_image_path, image_size, return_image_info):
         transform_train, transform_test = MyTransform.transform_train_voc_ss(image_size=image_size)
+        voc = VOCSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+        return voc
+
+    @staticmethod
+    def _get_voc_ss_val_center(label_image_path, image_size, return_image_info):
+        transform_train, transform_test = MyTransform.transform_train_voc_ss_center(image_size=image_size)
         voc = VOCSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
         return voc
 
