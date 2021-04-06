@@ -6,6 +6,7 @@ import random
 import numbers
 import torchvision
 import numpy as np
+from glob import glob
 from PIL import Image
 import scipy.io as scio
 from skimage.io import imread
@@ -342,6 +343,34 @@ class DataUtil(object):
 
         return image_info_list[split]
 
+    @classmethod
+    def get_ss_info(cls, data_root=None, split="train", train_label_path=None):
+        if split == "train":
+            train_label_path = train_label_path if train_label_path is not None else \
+                "/media/ubuntu/4T/ALISURE/USS/WSS_CAM/cam/2_CAMNet_200_32_256_0.5"
+
+            data_info = cls.get_data_info(data_root=data_root)
+            train_image_path = [one_data["image_path"] for one_data in data_info]
+            train_label_path = [one_image_path.replace(os.path.join(
+                data_root, "ILSVRC2017_DET/ILSVRC/Data/DET"),
+                train_label_path) for one_image_path in train_image_path]
+            return [{"image_path": image, "label_path": mask} for image, mask in
+                                     zip(train_image_path, train_label_path)]
+
+        if split == "test":
+            test_data_dir = os.path.join(data_root, "LID_track1_imageset/LID_track1/test")
+            test_image_path = sorted(glob(os.path.join(test_data_dir, "*.JPEG")))
+            return [{"image_path": image} for image in test_image_path]
+
+        if split == "val":
+            val_data_dir = os.path.join(data_root, "LID_track1_imageset/LID_track1/val")
+            val_image_path = glob(os.path.join(val_data_dir, "*.JPEG"))
+            val_label_dir = os.path.join(data_root, "LID_track1_annotations/track1_val_annotations")
+            val_label_path = sorted(glob(os.path.join(val_label_dir, "*.png")))
+            return [{"image_path": image, "label_path": mask} for image, mask in
+                    zip(val_image_path, val_label_path)]
+        pass
+
     @staticmethod
     def get_class_name(mat_file=None):
         mat_file = mat_file if mat_file is not None else "/media/ubuntu/4T/ALISURE/Data/L2ID/data/meta_det.mat"
@@ -455,6 +484,23 @@ class MyTransform(object):
             ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         return transform_train, transform_test
 
+    @classmethod
+    def transform_train_ss(cls, image_size=513):
+        transform_train = ExtCompose([
+            ExtRandomScale((0.5, 2.0)), ExtRandomCrop(size=(image_size, image_size), pad_if_needed=True),
+            ExtRandomHorizontalFlip(), ExtToTensor(),
+            ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transform_test = ExtCompose([
+            ExtResize(size=image_size), ExtCenterCrop(size=image_size), ExtToTensor(),
+            ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        return transform_train, transform_test
+
+    @classmethod
+    def transform_test_ss(cls, image_size=513):
+        transform_test = ExtCompose([ExtResize(size=image_size), ExtToTensor(),
+                                     ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        return transform_test
+
     pass
 
 
@@ -502,7 +548,7 @@ class ImageNetSegmentation(Dataset):
         label_path, image_path = self.images_list[idx]
 
         image = Image.open(image_path).convert("RGB")
-        mask = Image.open(label_path).convert("L")
+        mask = Image.open(label_path)
         image, mask = self.transform(image, mask)
 
         if self.return_image_info:
@@ -545,12 +591,16 @@ class DatasetUtil(object):
     dataset_type_mlc_train = "mlc_train"
     dataset_type_mlc_val = "mlc_val"
     dataset_type_vis_cam = "vis_cam"
+    dataset_type_ss_train = "ss_train"
+    dataset_type_ss_val = "ss_val"
+    dataset_type_ss_test = "ss_test"
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
     dataset_type_ss_voc_val_center = "ss_voc_val_center"
 
     @classmethod
-    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, return_image_info=False, sampling=False):
+    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None,
+                            return_image_info=False, sampling=False, train_label_path=None):
         if dataset_type == cls.dataset_type_mlc_train:
             data_info = DataUtil.get_data_info(data_root=data_root)
             data_info = data_info[::20] if sampling else data_info
@@ -570,6 +620,7 @@ class DatasetUtil(object):
             label_image_path = [[[one_object[2] for one_object in one_data["object"]],
                                  one_data["image_path"]] for one_data in data_info]
             return cls._get_imagenet_vis_cam(label_image_path, image_size, return_image_info=return_image_info)
+        ################################################################################################################
         elif dataset_type == cls.dataset_type_ss_voc_train:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
             data_info = data_info[::20] if sampling else data_info
@@ -585,9 +636,43 @@ class DatasetUtil(object):
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             return cls._get_voc_ss_val_center(label_image_path, image_size, return_image_info=return_image_info)
+        ################################################################################################################
+        elif dataset_type == cls.dataset_type_ss_train:
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_path=train_label_path)
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            return cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
+        elif dataset_type == cls.dataset_type_ss_val:
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            return cls._get_ss_val(label_image_path, image_size, return_image_info=return_image_info)
+        elif dataset_type == cls.dataset_type_ss_test:
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="test")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            return cls._get_ss_test(label_image_path, image_size, return_image_info=return_image_info)
         else:
             raise Exception("....")
         pass
+
+    @staticmethod
+    def _get_ss_train(label_image_path, image_size, return_image_info):
+        transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
+        seg = ImageNetSegmentation(label_image_path, transform=transform_train, return_image_info=return_image_info)
+        return seg
+
+    @staticmethod
+    def _get_ss_val(label_image_path, image_size, return_image_info):
+        transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
+        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+        return seg
+
+    @staticmethod
+    def _get_ss_test(label_image_path, image_size, return_image_info):
+        transform_test = MyTransform.transform_test_ss(image_size=image_size)
+        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+        return seg
 
     @staticmethod
     def _get_voc_ss_train(label_image_path, image_size, return_image_info):

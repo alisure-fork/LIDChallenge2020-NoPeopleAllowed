@@ -19,23 +19,20 @@ from util_network import DeepLabV3Plus
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
 
 
-class VOCRunner(object):
+class SSRunner(object):
 
     def __init__(self, config):
         self.config = config
 
         # Data
-        self.dataset_voc_train = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss_voc_train, self.config.ss_size, data_root=self.config.data_root_path)
-        self.data_loader_ss_train = DataLoader(self.dataset_voc_train, self.config.ss_batch_size,
-                                               shuffle=True, num_workers=16)
+        self.dataset_ss_train = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss_train, self.config.ss_size,
+            data_root=self.config.data_root_path, train_label_path=self.config.label_path)
+        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size, True, num_workers=16)
 
-        _dataset_type_ss_voc_val = DatasetUtil.dataset_type_ss_voc_val_center \
-            if self.config.val_center_crop else DatasetUtil.dataset_type_ss_voc_val
-        _val_batch_size = self.config.ss_batch_size if self.config.val_center_crop else 1
-        self.dataset_voc_val = DatasetUtil.get_dataset_by_type(
-            _dataset_type_ss_voc_val, self.config.ss_size, data_root=self.config.data_root_path)
-        self.data_loader_ss_val = DataLoader(self.dataset_voc_val, _val_batch_size, shuffle=False, num_workers=16)
+        self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss_val, self.config.ss_size, data_root=self.config.data_root_path)
+        self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size, False, num_workers=16)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
@@ -164,13 +161,12 @@ class VOCRunner(object):
 
 
 def train(config):
-    voc_runner = VOCRunner(config=config)
+    ss_runner = SSRunner(config=config)
 
     # 训练MIC
     if config.has_train_ss:
-        voc_runner.train_ss(start_epoch=0, model_file_name=None)
-        # voc_runner.eval_ss(epoch=0, model_file_name=os.path.join(config.ss_model_dir, "ss_final_100.pth"))
-        # voc_runner.eval_ss(epoch=0, model_file_name="../../../WSS_Model_VOC/1_DeepLabV3Plus_21_100_32_2_513/ss_final_100.pth")
+        ss_runner.train_ss(start_epoch=0, model_file_name=None)
+        # ss_runner.eval_ss(epoch=0, model_file_name=os.path.join(config.ss_model_dir, "ss_final_100.pth"))
         pass
 
     pass
@@ -186,26 +182,25 @@ class Config(object):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
-        self.has_train_ss = True  # 是否训练VOC
+        self.has_train_ss = True  # 是否训练SS
 
         self.ss_num_classes = 21
-        self.ss_epoch_num = 100
-        self.ss_milestones = [40, 70]
+        self.ss_epoch_num = 25
+        self.ss_milestones = [15, 20]
         self.ss_batch_size = 6 * len(self.gpu_id.split(","))
         self.ss_lr = 0.001
-        self.ss_save_epoch_freq = 2
-        self.ss_eval_epoch_freq = 2
+        self.ss_save_epoch_freq = 1
+        self.ss_eval_epoch_freq = 1
 
         # 图像大小
         self.ss_size = 513
         self.output_stride = 16
-        self.val_center_crop = True
-        # self.val_center_crop = False
 
         # 网络
         self.Net = DeepLabV3Plus
 
         self.data_root_path = self.get_data_root_path()
+        self.label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_CAM/cam/2_CAMNet_200_32_256_0.5"
 
         run_name = "1"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
@@ -213,64 +208,21 @@ class Config(object):
             self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
         Tools.print(self.model_name)
 
-        self.ss_model_dir = "../../../WSS_Model_VOC/{}".format(self.model_name)
+        self.ss_model_dir = "../../../WSS_Model_SS/{}".format(self.model_name)
         self.ss_save_result_txt = Tools.new_dir("{}/result.txt".format(self.ss_model_dir))
         pass
 
     @staticmethod
     def get_data_root_path():
         if "Linux" in platform.platform():
-            data_root = '/mnt/4T/Data/data/SS/voc'
+            data_root = '/mnt/4T/Data/data/L2ID/data'
             if not os.path.isdir(data_root):
-                data_root = "/media/ubuntu/4T/ALISURE/Data/SS/voc"
+                data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
         else:
-            data_root = "F:\\data\\SS\\voc"
+            data_root = "F:\\data\\L2ID\\data"
         return data_root
 
     pass
-
-
-"""
-../../../WSS_Model_VOC/1_DeepLabV3Plus_21_20_16_2_512/ss_final_20.pth
-Overall Acc: 0.914844
-Mean Acc: 0.873718
-FreqW Acc: 0.857851
-Mean IoU: 0.674316
-
-../../../WSS_Model_VOC/1_DeepLabV3Plus_21_30_32_2_513/ss_final_30.pth
-Overall Acc: 0.924408
-Mean Acc: 0.856088
-FreqW Acc: 0.870093
-Mean IoU: 0.696401
-
-../../../WSS_Model_VOC/1_DeepLabV3Plus_21_100_32_2_513/ss_final_100.pth
-Overall Acc: 0.937717
-Mean Acc: 0.857960
-FreqW Acc: 0.890593
-Mean IoU: 0.734259
-
-Crop
-Overall Acc: 0.938004
-Mean Acc: 0.874211
-FreqW Acc: 0.890033
-Mean IoU: 0.763261
-
-Overall Acc: 0.933558
-Mean Acc: 0.862657
-FreqW Acc: 0.884077
-Mean IoU: 0.725817
-
-Overall Acc: 0.942698
-Mean Acc: 0.870897
-FreqW Acc: 0.898153
-Mean IoU: 0.754275
-
-../../../WSS_Model_VOC/1_DeepLabV3PlusResNet101_21_100_24_2_513/ss_final_100.pth
-Overall Acc: 0.941291
-Mean Acc: 0.887111
-FreqW Acc: 0.895716
-Mean IoU: 0.773307
-"""
 
 
 if __name__ == '__main__':

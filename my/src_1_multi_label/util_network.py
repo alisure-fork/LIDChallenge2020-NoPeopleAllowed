@@ -51,23 +51,17 @@ class CAMNet(nn.Module):
         self.head_linear = nn.Linear(512, self.num_classes)
         pass
 
-    def forward(self, x):
-        features = self.backbone.features(x)
-        features = self.head_conv(features)
-        features = F.adaptive_avg_pool2d(features, output_size=(1, 1)).view((features.size()[0], -1))
-
-        features = self.head_linear(features)
-        return features
-
-    def forward_map(self, x):
+    def forward(self, x, is_vis=False):
         features = self.backbone.features(x)
         features = self.head_conv(features)
         out_features = features
         features = F.adaptive_avg_pool2d(features, output_size=(1, 1)).view((features.size()[0], -1))
 
         features = self.head_linear(features)
-        logits = torch.sigmoid(features)
-        return logits, out_features
+        if is_vis:
+            logits = torch.sigmoid(features)
+            return logits, out_features
+        return features
 
     def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)

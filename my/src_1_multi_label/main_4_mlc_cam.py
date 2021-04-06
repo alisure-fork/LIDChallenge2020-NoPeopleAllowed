@@ -11,10 +11,11 @@ import torch.nn as nn
 from PIL import Image
 from util_crf import CRFTool
 import torch.nn.functional as F
-from util_network import CAMNet
 from alisuretool.Tools import Tools
 from torch.utils.data import DataLoader, Dataset
 from util_data import DatasetUtil, MyTransform, DataUtil
+sys.path.append("../../")
+from util_network import CAMNet
 
 
 class CAMRunner(object):
@@ -40,7 +41,7 @@ class CAMRunner(object):
             for _, (inputs, labels, image_paths) in tqdm(enumerate(self.data_loader_vis_cam),
                                                          total=len(self.data_loader_vis_cam)):
                 inputs_cuda = inputs.float().cuda()
-                logits, out_features = self.net.forward_map(inputs_cuda)
+                logits, out_features = self.net.forward(inputs_cuda, is_vis=True)
                 logits = logits.detach().cpu().numpy()
 
                 # 标签选择策略
@@ -76,7 +77,7 @@ class CAMRunner(object):
 
                     # 保存原图
                     Image.open(image_path).save(result_filename)
-                    # 训练数据拟增强
+                    # 训练数据逆增强
                     image_input = self.transform_un_normalize(inputs[bz_i])
                     image_input.save(result_filename.replace(".JPEG", "_i.JPEG"))
                     # 对结果进行彩色可视化
@@ -184,13 +185,17 @@ class Config(object):
 
         # self.mlc_size = 224
         # self.model_file_name = "../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth"
+        # self.mlc_size = 256
+        # self.model_file_name = "../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_20.pth"
+        # self.sampling = True
         self.mlc_size = 256
-        self.model_file_name = "../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_20.pth"
+        self.model_file_name = "../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth"
         self.sampling = True
 
-        run_name = "1"
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
-            run_name, "CAMNet", self.mlc_num_classes, self.mlc_batch_size, self.mlc_size, self.bg_thr, self.top_k_thr)
+        run_name = "2"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
+            run_name, "CAMNet", self.mlc_num_classes, self.mlc_batch_size, self.mlc_size, self.bg_thr,
+            self.top_k_thr, "_sampling" if self.sampling else "")
         Tools.print(self.model_name)
 
         self.mlc_cam_dir = "../../../WSS_CAM/{}".format(self.model_name)

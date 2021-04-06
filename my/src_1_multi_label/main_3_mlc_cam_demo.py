@@ -37,7 +37,7 @@ class CAMRunner(object):
                 image_inputs = self.transform_test(image)
                 inputs = torch.unsqueeze(image_inputs, dim=0).float().cuda()
 
-                logits, out_features = self.net.forward_map(inputs)
+                logits, out_features = self.net.forward(inputs, is_vis=True)
                 logits = logits.detach().cpu().numpy()
 
                 arg_sort = np.argsort(logits)[0][-10:]
