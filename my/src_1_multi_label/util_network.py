@@ -7,7 +7,8 @@ from torchvision import models
 import torch.nn.functional as F
 from alisuretool.Tools import Tools
 from torch.utils.data import DataLoader, Dataset
-from deep_labv3plus_pytorch.network.modeling import deeplabv3plus_resnet50, deeplabv3plus_resnet101
+from deep_labv3plus_pytorch.network.modeling import deeplabv3plus_resnet50, deeplabv3plus_resnet101, deeplabv3plus_mobilenet
+from deep_labv3plus_pytorch.network.modeling import deeplabv3_resnet50, deeplabv3plus_resnet101, deeplabv3_mobilenet
 
 
 class ConvBlock(nn.Module):
@@ -71,12 +72,9 @@ class CAMNet(nn.Module):
 
 class DeepLabV3Plus(nn.Module):
 
-    def __init__(self, num_classes, output_stride=8):
+    def __init__(self, num_classes, output_stride=8, arch=deeplabv3plus_resnet50):
         super().__init__()
-        # self.model = deeplabv3plus_resnet50(num_classes=num_classes,
-        #                                     output_stride=output_stride, pretrained_backbone=True)
-        self.model = deeplabv3plus_resnet101(num_classes=num_classes,
-                                             output_stride=output_stride, pretrained_backbone=True)
+        self.model = arch(num_classes=num_classes, output_stride=output_stride, pretrained_backbone=True)
         pass
 
     def forward(self, x):

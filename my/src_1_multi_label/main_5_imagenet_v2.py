@@ -3,6 +3,7 @@ import sys
 import glob
 import torch
 import random
+import argparse
 import platform
 import numpy as np
 from tqdm import tqdm
@@ -10,14 +11,15 @@ import torch.nn as nn
 from PIL import Image
 import torch.optim as optim
 import torch.nn.functional as F
+from util_data import DatasetUtil
 from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
 from util_blance_gpu import BalancedDataParallel
 from torch.utils.data import DataLoader, Dataset
-from util_data import DataUtil, DatasetUtil, MyTransform
 sys.path.append("../../")
 from util_network import DeepLabV3Plus
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
+from torch.utils.data.distributed import DistributedSampler
 
 
 class SSRunner(object):
@@ -29,7 +31,8 @@ class SSRunner(object):
         self.dataset_ss_train = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss_train, self.config.ss_size,
             data_root=self.config.data_root_path, train_label_path=self.config.label_path)
-        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size, True, num_workers=16)
+        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size, True,
+                                               sampler=DistributedSampler(self.data_loader_ss_train), num_workers=16)
 
         self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss_val, self.config.ss_size, data_root=self.config.data_root_path)
@@ -37,10 +40,9 @@ class SSRunner(object):
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
-
-        self.net = BalancedDataParallel(2, self.net, dim=0).cuda()
-        # self.net = nn.DataParallel(self.net).cuda()
-        cudnn.benchmark = True
+        self.net = self.net.to(self.config.device)
+        self.net = torch.nn.parallel.DistributedDataParallel(
+            self.net, device_ids=[self.local_rank], output_device=self.local_rank, find_unused_parameters=True)
 
         # Optimize
         self.optimizer = optim.SGD(params=[
@@ -51,7 +53,7 @@ class SSRunner(object):
             self.optimizer, milestones=self.config.ss_milestones, gamma=0.1)
 
         # Loss
-        self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').cuda()
+        self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').to(self.config.device)
         pass
 
     def train_ss(self, start_epoch=0, model_file_name=None):
@@ -74,7 +76,7 @@ class SSRunner(object):
             self.net.train()
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_train),
                                             total=len(self.data_loader_ss_train)):
-                inputs, labels = inputs.float().cuda(), labels.long().cuda()
+                inputs, labels = inputs.float().to(self.config.device), labels.long().to(self.config.device)
                 self.optimizer.zero_grad()
 
                 result = self.net(inputs)
@@ -124,34 +126,23 @@ class SSRunner(object):
         self.eval_ss(epoch=self.config.ss_epoch_num)
         pass
 
-    def eval_ss(self, epoch=0, model_file_name=None, save_path=None):
+    def eval_ss(self, epoch=0, model_file_name=None):
         if model_file_name is not None:
             Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
             self.load_model(model_file_name)
             pass
 
-        un_norm = MyTransform.transform_un_normalize()
         self.net.eval()
         metrics = StreamSegMetrics(self.config.ss_num_classes)
         with torch.no_grad():
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_val), total=len(self.data_loader_ss_val)):
-                inputs = inputs.float().cuda()
-                labels = labels.long().cuda()
+                inputs = inputs.float().to(self.config.device)
+                labels = labels.long().to(self.config.device)
                 outputs = self.net(inputs)
                 preds = outputs.detach().max(dim=1)[1].cpu().numpy()
                 targets = labels.cpu().numpy()
 
                 metrics.update(targets, preds)
-
-                if save_path:
-                    for j, (input_one, label_one, pred_one) in enumerate(zip(inputs, targets, preds)):
-                        un_norm(input_one.cpu()).save(os.path.join(save_path, "{}_{}.JPEG".format(i, j)))
-                        DataUtil.gray_to_color(np.asarray(label_one, dtype=np.uint8)).save(
-                            os.path.join(save_path, "{}_{}_l.png".format(i, j)))
-                        DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).save(
-                            os.path.join(save_path, "{}_{}_p.png".format(i, j)))
-                        pass
-                    pass
                 pass
             pass
 
@@ -180,12 +171,7 @@ def train(config):
     # 训练MIC
     if config.has_train_ss:
         ss_runner.train_ss(start_epoch=0, model_file_name=None)
-        pass
-
-    if config.has_eval_ss:
-        epoch = 0
-        ss_runner.eval_ss(epoch=epoch, model_file_name=os.path.join(config.ss_model_dir, "ss_{}.pth".format(epoch)),
-                          save_path=Tools.new_dir(os.path.join(config.ss_save_dir, str(epoch))))
+        # ss_runner.eval_ss(epoch=0, model_file_name=os.path.join(config.ss_model_dir, "ss_final_100.pth"))
         pass
 
     pass
@@ -193,21 +179,22 @@ def train(config):
 
 class Config(object):
 
-    def __init__(self):
+    def __init__(self, local_rank):
+        self.local_rank = local_rank
         self.gpu_id = "0, 1, 2, 3"
         # self.gpu_id = "0"
         # self.gpu_id = "0, 1"
         # self.gpu_id = "1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
+        self.device = self.distributed()
 
         # 流程控制
         self.has_train_ss = True  # 是否训练SS
-        self.has_eval_ss = False  # 是否评估SS
 
         self.ss_num_classes = 201
         self.ss_epoch_num = 25
         self.ss_milestones = [15, 20]
-        self.ss_batch_size = 4 * (len(self.gpu_id.split(",")) - 1) + 2
+        self.ss_batch_size = 4 * len(self.gpu_id.split(","))
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
         self.ss_eval_epoch_freq = 1
@@ -229,9 +216,21 @@ class Config(object):
         Tools.print(self.model_name)
 
         self.ss_model_dir = "../../../WSS_Model_SS/{}".format(self.model_name)
-        self.ss_save_dir = "../../../WSS_Model_SS_EVAL/{}".format(self.model_name)
         self.ss_save_result_txt = Tools.new_dir("{}/result.txt".format(self.ss_model_dir))
         pass
+
+    def distributed(self):
+        torch.cuda.set_device(self.local_rank)
+        device = torch.device('cuda', self.local_rank)
+        torch.distributed.init_process_group(backend='nccl')
+
+        seed = 0
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+        return device
 
     @staticmethod
     def get_data_root_path():
@@ -247,6 +246,10 @@ class Config(object):
 
 
 if __name__ == '__main__':
-    config = Config()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local_rank", type=int, default=-1)
+    args = parser.parse_args()
+
+    config = Config(local_rank=args.local_rank)
     train(config=config)
     pass

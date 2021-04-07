@@ -87,49 +87,54 @@ class CAMRunner(object):
             Tools.print("now is {}".format(index))
             pass
 
-        pkl_data = Tools.read_from_pkl(pkl_path)
-        label_one = pkl_data["label"]
-        image_path_one = pkl_data["image_path"]
-        label_for_cam_one = pkl_data["label_for_cam"]
-        cam_one = pkl_data["cam"]
+        try:
+            pkl_data = Tools.read_from_pkl(pkl_path)
+            label_one = pkl_data["label"]
+            image_path_one = pkl_data["image_path"]
+            label_for_cam_one = pkl_data["label_for_cam"]
+            cam_one = pkl_data["cam"]
 
-        im = Image.open(image_path_one)
-        image_size = im.size
+            im = Image.open(image_path_one)
+            image_size = im.size
 
-        now_name = image_path_one.split("Data/DET/")[1]
-        result_filename = Tools.new_dir(os.path.join(self.config.mlc_cam_dir, now_name))
-        # 保存原图
-        # im.save(result_filename)
+            now_name = image_path_one.split("Data/DET/")[1]
+            result_filename = Tools.new_dir(os.path.join(self.config.mlc_cam_dir, now_name))
+            # 保存原图
+            # im.save(result_filename)
 
-        # 预测结果, 对结果进行彩色可视化
-        np_single_cam = 0
-        np_cam = np.zeros(shape=(self.config.mlc_num_classes + 1, image_size[1], image_size[0]))
-        for label in label_for_cam_one:
-            image_input = np.asarray(im.resize((self.config.mlc_size, self.config.mlc_size)))
-            tensor_cam = torch.tensor(cam_one[label])
-            norm_cam = torch.squeeze(self._feature_norm(torch.unsqueeze(tensor_cam, dim=0)))
+            # 预测结果, 对结果进行彩色可视化
+            np_single_cam = 0
+            np_cam = np.zeros(shape=(self.config.mlc_num_classes + 1, image_size[1], image_size[0]))
+            for label in label_for_cam_one:
+                image_input = np.asarray(im.resize((self.config.mlc_size, self.config.mlc_size)))
+                tensor_cam = torch.tensor(cam_one[label])
+                norm_cam = torch.squeeze(self._feature_norm(torch.unsqueeze(tensor_cam, dim=0)))
 
-            now_cam_im = Image.fromarray(np.asarray(norm_cam * 255, dtype=np.uint8)).resize(size=image_size)
-            # now_cam_im.save(result_filename.replace(".JPEG", "_{}.bmp".format(label + 1)))
-            np_single_cam += np.asarray(now_cam_im, dtype=np.float)
+                now_cam_im = Image.fromarray(np.asarray(norm_cam * 255, dtype=np.uint8)).resize(size=image_size)
+                # now_cam_im.save(result_filename.replace(".JPEG", "_{}.bmp".format(label + 1)))
+                np_single_cam += np.asarray(now_cam_im, dtype=np.float)
 
-            cam_crf_one = self.torch_resize(norm_cam, size=(self.config.mlc_size, self.config.mlc_size))
-            cam_crf_one = CRFTool.crf(image_input, np.expand_dims(cam_crf_one, axis=0), t=5)
-            now_cam_crf_im = Image.fromarray(np.asarray(cam_crf_one * 255, dtype=np.uint8)).resize(size=image_size)
-            # now_cam_crf_im.save(result_filename.replace(".JPEG", "_crf_{}.bmp".format(label + 1)))
+                cam_crf_one = self.torch_resize(norm_cam, size=(self.config.mlc_size, self.config.mlc_size))
+                cam_crf_one = CRFTool.crf(image_input, np.expand_dims(cam_crf_one, axis=0), t=5)
+                now_cam_crf_im = Image.fromarray(np.asarray(cam_crf_one * 255, dtype=np.uint8)).resize(size=image_size)
+                # now_cam_crf_im.save(result_filename.replace(".JPEG", "_crf_{}.bmp".format(label + 1)))
 
-            np_cam[label + 1] = np.asarray(now_cam_im) / 2 + np.asarray(now_cam_crf_im) / 2
+                np_cam[label + 1] = np.asarray(now_cam_im) / 2 + np.asarray(now_cam_crf_im) / 2
+                pass
+
+            np_cam[0] = self.config.fg_thr * 255  # 0.7
+            cam_label = np.asarray(np.argmax(np_cam, axis=0), dtype=np.uint8)
+            cam_label[cam_label == 0] = 255
+            if len(label_for_cam_one) > 0:
+                cam_label[(np_single_cam / len(label_for_cam_one)) < self.config.bg_thr * 255] = 0  # 0.1
+                pass
+
+            im_color = DataUtil.gray_to_color(cam_label).resize(size=image_size, resample=Image.NEAREST)
+            im_color.save(result_filename.replace("JPEG", "png"))
             pass
-
-        np_cam[0] = self.config.fg_thr * 255  # 0.7
-        cam_label = np.asarray(np.argmax(np_cam, axis=0), dtype=np.uint8)
-        cam_label[cam_label == 0] = 255
-        if len(label_for_cam_one) > 0:
-            cam_label[(np_single_cam / len(label_for_cam_one)) < self.config.bg_thr * 255] = 0  # 0.1
+        except Exception():
+            Tools.print("{} {}".format(index, pkl_path))
             pass
-
-        im_color = DataUtil.gray_to_color(cam_label).resize(size=image_size, resample=Image.NEAREST)
-        im_color.save(result_filename.replace("JPEG", "png"))
         pass
 
     def _eval_mlc_cam_2_inner_old(self, index, pkl_path):

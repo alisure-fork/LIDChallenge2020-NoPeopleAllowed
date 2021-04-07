@@ -344,16 +344,24 @@ class DataUtil(object):
         return image_info_list[split]
 
     @classmethod
-    def get_ss_info(cls, data_root=None, split="train", train_label_path=None):
+    def get_ss_info(cls, data_root=None, split="train", train_label_dir=None):
         if split == "train":
-            train_label_path = train_label_path if train_label_path is not None else \
+            train_label_dir = train_label_dir if train_label_dir is not None else \
                 "/media/ubuntu/4T/ALISURE/USS/WSS_CAM/cam/2_CAMNet_200_32_256_0.5"
 
             data_info = cls.get_data_info(data_root=data_root)
             train_image_path = [one_data["image_path"] for one_data in data_info]
+
+            ########################################################
+            train_image_path = [one_image_path for one_image_path in train_image_path if os.path.exists(
+                one_image_path.replace(os.path.join(data_root, "ILSVRC2017_DET/ILSVRC/Data/DET"),
+                                       train_label_dir).replace(".JPEG", ".png"))]
+            Tools.print("{}".format(len(train_image_path)))
+            ########################################################
+
             train_label_path = [one_image_path.replace(os.path.join(
                 data_root, "ILSVRC2017_DET/ILSVRC/Data/DET"),
-                train_label_path) for one_image_path in train_image_path]
+                train_label_dir).replace(".JPEG", ".png") for one_image_path in train_image_path]
             return [{"image_path": image, "label_path": mask} for image, mask in
                                      zip(train_image_path, train_label_path)]
 
@@ -364,7 +372,7 @@ class DataUtil(object):
 
         if split == "val":
             val_data_dir = os.path.join(data_root, "LID_track1_imageset/LID_track1/val")
-            val_image_path = glob(os.path.join(val_data_dir, "*.JPEG"))
+            val_image_path = sorted(glob(os.path.join(val_data_dir, "*.JPEG")))
             val_label_dir = os.path.join(data_root, "LID_track1_annotations/track1_val_annotations")
             val_label_path = sorted(glob(os.path.join(val_label_dir, "*.png")))
             return [{"image_path": image, "label_path": mask} for image, mask in
@@ -493,6 +501,8 @@ class MyTransform(object):
         transform_test = ExtCompose([
             ExtResize(size=image_size), ExtCenterCrop(size=image_size), ExtToTensor(),
             ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        # transform_test = ExtCompose([ExtResize(size=image_size), ExtToTensor(),
+        #                              ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         return transform_train, transform_test
 
     @classmethod
@@ -638,7 +648,7 @@ class DatasetUtil(object):
             return cls._get_voc_ss_val_center(label_image_path, image_size, return_image_info=return_image_info)
         ################################################################################################################
         elif dataset_type == cls.dataset_type_ss_train:
-            data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_path=train_label_path)
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_dir=train_label_path)
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             return cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
