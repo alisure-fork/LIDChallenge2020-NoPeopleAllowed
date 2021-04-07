@@ -63,6 +63,8 @@ class CAMRunner(object):
 
 """
 1/20 val mae:0.0775 f1:0.9067 ../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth
+1/1  val mae:0.1017 f1:0.8701 ../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_40.pth
+1/1  val mae:0.0830 f1:0.8742 ../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth
 """
 
 
@@ -79,5 +81,5 @@ if __name__ == '__main__':
     all_image_file = [os.path.join(data_root, image_filename) for image_filename in image_filename_list]
 
     cam_runner.demo_mlc(image_filename_list=all_image_file,
-                        model_file_name="../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth")
+                        model_file_name="../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth")
     pass

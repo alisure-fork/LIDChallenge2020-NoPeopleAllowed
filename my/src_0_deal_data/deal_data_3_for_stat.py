@@ -38,6 +38,7 @@ if __name__ == '__main__':
         pass
     cat_len_list_sort = sorted(cat_len_list.items(), key=lambda cat_len_list: cat_len_list[1], reverse=True)
     Tools.print(cat_len_list_sort)
+    Tools.print(np.sum(list(cat_len_list.values())))
 
     cat_single_len_list = {}
     for key in cat_single_list:
@@ -46,4 +47,14 @@ if __name__ == '__main__':
     cat_single_len_list_sort = sorted(cat_single_len_list.items(),
                                       key=lambda cat_single_len_list: cat_single_len_list[1], reverse=True)
     Tools.print(cat_single_len_list_sort)
+    Tools.print(np.sum(list(cat_single_len_list.values())))
+
+    cat_sub_len_list = {}
+    for key in cat_single_list:
+        cat_sub_len_list[key] = len(cat_list[key]) - len(cat_single_list[key])
+        pass
+    cat_sub_len_list_sort = sorted(cat_sub_len_list.items(),
+                                   key=lambda cat_sub_len_list: cat_sub_len_list[1], reverse=True)
+    Tools.print(cat_sub_len_list_sort)
+    Tools.print(np.sum(list(cat_sub_len_list.values())))
     pass
