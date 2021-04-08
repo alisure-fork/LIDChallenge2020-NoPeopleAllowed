@@ -599,6 +599,55 @@ class ImageNetMLC(Dataset):
     pass
 
 
+class ImageNetMLCNoPerson(Dataset):
+
+    def __init__(self, images_list, transform, num_classes, return_image_info=False, sample_num=None):
+        self.images_list = images_list
+        self.transform = transform
+        self.num_classes = num_classes
+        self.return_image_info = return_image_info
+        self.train_images_list = None
+        self.sample_num = sample_num if sample_num is not None else 500
+
+        self.all_image_dict = {}
+        for one in self.images_list:
+            for one_one in one[0]:
+                if one_one not in self.all_image_dict:
+                    self.all_image_dict[one_one] = []
+                self.all_image_dict[one_one].append(one)
+                pass
+            pass
+
+        self.reset()
+        pass
+
+    def __len__(self):
+        return len(self.train_images_list)
+
+    def reset(self):
+        image_list = [random.choices(self.all_image_dict[key], k=self.sample_num) for key in self.all_image_dict]
+        self.train_images_list = []
+        for select_image in image_list:
+            self.train_images_list += select_image
+        np.random.shuffle(self.train_images_list)
+        pass
+
+    def __getitem__(self, idx):
+        image_label, image_path = self.train_images_list[idx]
+
+        image = Image.open(image_path).convert("RGB")
+        image = self.transform(image)
+
+        label_encoded = torch.zeros(self.num_classes, dtype=torch.float32)
+        label_encoded[np.array(image_label, dtype=np.int) - 1] = 1
+
+        if self.return_image_info:
+            return image, label_encoded, image_path
+        return image, label_encoded
+
+    pass
+
+
 class ImageNetSegmentation(Dataset):
 
     def __init__(self, images_list, transform, return_image_info=False):
@@ -657,6 +706,7 @@ class DatasetUtil(object):
     dataset_type_person = "person"
     dataset_type_mlc_train = "mlc_train"
     dataset_type_mlc_val = "mlc_val"
+    dataset_type_mlc_no_person = "mlc_no_person"
     dataset_type_vis_cam = "vis_cam"
     dataset_type_ss_train = "ss_train"
     dataset_type_ss_val = "ss_val"
@@ -685,6 +735,32 @@ class DatasetUtil(object):
             data_2 = cls._get_imagenet_person_all_val(label_image_path, image_size=image_size,
                                                       return_image_info=return_image_info)
             return data_0, data_1, data_2
+        ################################################################################################################
+        elif dataset_type == cls.dataset_type_mlc_no_person:
+            data_info = DataUtil.get_data_info(data_root=data_root)
+            data_info = data_info[::20] if sampling else data_info
+            sample_num = 20 if sampling else None
+
+            label_image_path = []
+            for one_data in data_info:
+                now_label = []
+                for one in one_data["object"]:
+                    if one[2] < 124:
+                        now_label.append(one[2])
+                    elif one[2] > 124:
+                        now_label.append(one[2] - 1)
+                    pass
+                now_label = list(set(now_label))
+                if len(now_label) > 0:
+                    label_image_path.append([now_label, one_data["image_path"]])
+                    pass
+                pass
+
+            data_0 = cls._get_imagenet_mlc_no_person_train(label_image_path, image_size=image_size,
+                                                           return_image_info=return_image_info, sample_num=sample_num)
+            data_1 = cls._get_imagenet_mlc_no_person_val(label_image_path, image_size=image_size,
+                                                         return_image_info=return_image_info)
+            return data_0, data_1
         ################################################################################################################
         elif dataset_type == cls.dataset_type_mlc_train:
             data_info = DataUtil.get_data_info(data_root=data_root)
@@ -819,6 +895,20 @@ class DatasetUtil(object):
         person = ImageNetPersonAll(images_list=label_image_path,
                                    transform=transform_test, return_image_info=return_image_info)
         return person
+
+    @staticmethod
+    def _get_imagenet_mlc_no_person_train(label_image_path, image_size, return_image_info, sample_num=None):
+        transform_train, transform_test = MyTransform.transform_train_cam(image_size=image_size)
+        mlc_no_person = ImageNetMLCNoPerson(images_list=label_image_path, num_classes=199, sample_num=sample_num,
+                                            transform=transform_train, return_image_info=return_image_info)
+        return mlc_no_person
+
+    @staticmethod
+    def _get_imagenet_mlc_no_person_val(label_image_path, image_size, return_image_info):
+        transform_train, transform_test = MyTransform.transform_train_cam(image_size=image_size)
+        mlc_no_person = ImageNetMLC(images_list=label_image_path, num_classes=199,
+                                    transform=transform_test, return_image_info=return_image_info)
+        return mlc_no_person
 
     pass
 

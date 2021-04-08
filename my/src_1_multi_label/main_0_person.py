@@ -17,7 +17,6 @@ sys.path.append("../../")
 from util_data import DatasetUtil
 from util_network import CAMNet, ClassNet
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.sampler import WeightedRandomSampler
 
 
 class PersonRunner(object):
@@ -267,6 +266,7 @@ class Config(object):
 
 """
 val acc:0.9403 ../../../WSS_Model_Person/1_ClassNet_2_15_192_2_224/person_final_15.pth
+val acc:0.9858 ../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth
 """
 
 

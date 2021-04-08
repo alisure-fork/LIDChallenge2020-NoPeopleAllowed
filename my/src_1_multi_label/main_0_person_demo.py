@@ -57,6 +57,7 @@ class PersonRunner(object):
 
 """
 val acc:0.9403 ../../../WSS_Model_Person/1_ClassNet_2_15_192_2_224/person_final_15.pth
+val acc:0.9858 ../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth
 """
 
 
@@ -78,8 +79,11 @@ if __name__ == '__main__':
     # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n01443537", "*.JPEG"))
     # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n01495701", "*.JPEG"))
     # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n01496331", "*.JPEG"))
-    all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n01503061", "*.JPEG"))
+    # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n01503061", "*.JPEG"))
+    # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n02028035", "*.JPEG"))
+    # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n02110806", "*.JPEG"))
+    all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2014_train_0006", "*.JPEG"))
 
     cam_runner.demo_person(image_filename_list=all_image_file,
-                           model_file_name="../../../WSS_Model_Person/1_ClassNet_2_15_192_2_224/person_final_15.pth")
+                           model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth")
     pass
