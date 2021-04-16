@@ -23,12 +23,11 @@ class PersonCAMRunner(object):
         self.image_size = image_size
         self.net = ClassNet(num_classes=num_classes).cuda()
 
-        self.name_to_label_id, self.label_info_dict = DataUtil.get_class_name()
         self.transform_train, self.transform_test = MyTransform.transform_train_cam(image_size=self.image_size)
         self.transform_un_normalize = MyTransform.transform_un_normalize()
         pass
 
-    def demo_mlc_cam(self, image_filename_list, model_file_name=None):
+    def demo_mlc_cam(self, image_filename_list, save_path=None, model_file_name=None):
         Tools.print("Load model form {}".format(model_file_name))
         self.load_model(model_file_name)
 
@@ -51,17 +50,18 @@ class PersonCAMRunner(object):
                 cam_list4 = (np.asarray(cam_list1) - 0.5) * 2
                 cam_list4[cam_list4 < 0] = 0
 
-                # image.save("1.png")
-                # Image.fromarray(np.asarray(cam_list[0][0] * 255, dtype=np.uint8)).save("00.bmp")
-                # Image.fromarray(np.asarray(cam_list[0][1] * 255, dtype=np.uint8)).save("01.bmp")
-                # Image.fromarray(np.asarray(cam_list1[0][0] * 255, dtype=np.uint8)).save("10.bmp")
-                # Image.fromarray(np.asarray(cam_list1[0][1] * 255, dtype=np.uint8)).save("11.bmp")
-                # Image.fromarray(np.asarray(cam_list2[0][0] * 255, dtype=np.uint8)).save("20.bmp")
-                # Image.fromarray(np.asarray(cam_list2[0][1] * 255, dtype=np.uint8)).save("21.bmp")
-                # Image.fromarray(np.asarray(cam_list3[0][0] * 255, dtype=np.uint8)).save("30.bmp")
-                # Image.fromarray(np.asarray(cam_list3[0][1] * 255, dtype=np.uint8)).save("31.bmp")
-                # Image.fromarray(np.asarray(cam_list4[0][0] * 255, dtype=np.uint8)).save("40.bmp")
-                # Image.fromarray(np.asarray(cam_list4[0][1] * 255, dtype=np.uint8)).save("41.bmp")
+                result_path = Tools.new_dir(os.path.join(save_path, os.path.basename(image_filename).replace(".JPEG", "")))
+                image.save(os.path.join(result_path, "0.JPEG"))
+                # Image.fromarray(np.asarray(cam_list[0][0] * 255, dtype=np.uint8)).save(os.path.join(result_path, "00.bmp"))
+                # Image.fromarray(np.asarray(cam_list[0][1] * 255, dtype=np.uint8)).save(os.path.join(result_path, "01.bmp"))
+                Image.fromarray(np.asarray(cam_list1[0][0] * 255, dtype=np.uint8)).save(os.path.join(result_path, "10.bmp"))
+                Image.fromarray(np.asarray(cam_list1[0][1] * 255, dtype=np.uint8)).save(os.path.join(result_path, "11.bmp"))
+                Image.fromarray(np.asarray(cam_list2[0][0] * 255, dtype=np.uint8)).save(os.path.join(result_path, "20.bmp"))
+                Image.fromarray(np.asarray(cam_list2[0][1] * 255, dtype=np.uint8)).save(os.path.join(result_path, "21.bmp"))
+                Image.fromarray(np.asarray(cam_list3[0][0] * 255, dtype=np.uint8)).save(os.path.join(result_path, "30.bmp"))
+                Image.fromarray(np.asarray(cam_list3[0][1] * 255, dtype=np.uint8)).save(os.path.join(result_path, "31.bmp"))
+                Image.fromarray(np.asarray(cam_list4[0][0] * 255, dtype=np.uint8)).save(os.path.join(result_path, "40.bmp"))
+                Image.fromarray(np.asarray(cam_list4[0][1] * 255, dtype=np.uint8)).save(os.path.join(result_path, "41.bmp"))
 
                 for index, arg_one in enumerate(arg_sort):
                     Tools.print("{:3d} {:3d} {:.4f}".format(index, arg_one, logits[0][arg_one]))
@@ -153,20 +153,25 @@ class PersonCAMRunner(object):
         Tools.print("Restore from {}".format(model_file_name))
         pass
 
+    @staticmethod
+    def get_data_root_path():
+        if "Linux" in platform.platform():
+            data_root = '/mnt/4T/Data/data/L2ID/data'
+            if not os.path.isdir(data_root):
+                data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+        else:
+            data_root = "F:\\data\\L2ID\\data"
+        return data_root
+
     pass
 
 
-"""
-val acc:0.9858 ../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth
-"""
-
-
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     cam_runner = PersonCAMRunner(image_size=224, num_classes=2)
 
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data/ILSVRC2017_DET/ILSVRC/Data/DET"
+    data_root = os.path.join(cam_runner.get_data_root_path(), "ILSVRC2017_DET/ILSVRC/Data/DET")
     image_filename_list = [
         "train/ILSVRC2013_train/n00477639/n00477639_11150.JPEG",
         "train/ILSVRC2013_train/n00477639/n00477639_10591.JPEG",
@@ -187,5 +192,6 @@ if __name__ == '__main__':
     all_image_file = [os.path.join(data_root, image_filename) for image_filename in image_filename_list]
 
     cam_runner.demo_mlc_cam(image_filename_list=all_image_file,
-                            model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth")
+                            save_path="../../../WSS_CAM/1_ClassNet_2_50_144_5_224/person_45",
+                            model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_144_5_224/person_45.pth")
     pass

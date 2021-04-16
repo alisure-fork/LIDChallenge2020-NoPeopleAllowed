@@ -5,6 +5,7 @@ from tqdm import tqdm
 import scipy.io as scio
 import xml.etree.ElementTree as ET
 from alisuretool.Tools import Tools
+from deal_data_0_global_info import get_data_root_path
 
 
 class DealData(object):
@@ -58,7 +59,7 @@ class DealData(object):
 
 
 if __name__ == '__main__':
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+    data_root = get_data_root_path()
     result_path = Tools.new_dir(os.path.join(data_root, "deal", "label_info_list.pkl"))
 
     name_to_label_id, label_info_dict = DealData.get_class_name(os.path.join(data_root, "meta_det.mat"))

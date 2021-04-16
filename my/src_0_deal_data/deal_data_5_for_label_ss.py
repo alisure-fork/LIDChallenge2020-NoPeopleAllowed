@@ -4,11 +4,12 @@ from glob import glob
 from tqdm import tqdm
 from PIL import Image
 from alisuretool.Tools import Tools
+from deal_data_0_global_info import get_data_root_path
 from src_0_deal_data.deal_data_1_for_label_info import DealData
 
 
 if __name__ == '__main__':
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+    data_root = get_data_root_path()
     cat_ref_path = os.path.join(data_root, "LID_track1_annotations", "cat_ref.txt")
 
     name_to_label_id, label_info_dict = DealData.get_class_name(os.path.join(data_root, "meta_det.mat"))

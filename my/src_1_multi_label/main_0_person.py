@@ -3,6 +3,7 @@ import sys
 import glob
 import torch
 import random
+import shutil
 import platform
 import numpy as np
 from tqdm import tqdm
@@ -39,7 +40,8 @@ class PersonRunner(object):
         self.net = nn.DataParallel(self.net).cuda()
         cudnn.benchmark = True
 
-        self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.person_lr, betas=(0.9, 0.999), weight_decay=0)
+        self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.person_lr,
+                                    betas=(0.9, 0.999), weight_decay=0)
 
         # Loss
         self.ce_loss = nn.CrossEntropyLoss().cuda()
@@ -158,6 +160,30 @@ class PersonRunner(object):
             pass
         return images_list, count
 
+    def save_person_result(self, result_path):
+        self.net.eval()
+        with torch.no_grad():
+            count = 0
+            images_list = [[o for o in one] for one in self.data_loader_person_val_all.dataset.images_list]
+            for i, (inputs, labels, indexes) in tqdm(enumerate(self.data_loader_person_val_all),
+                                                     total=len(self.data_loader_person_val_all)):
+                logits = self.net(inputs.float().cuda()).detach().cpu()
+                logits = torch.softmax(logits, dim=1)
+                net_out = torch.argmax(logits, dim=1).numpy()
+                labels = labels.numpy()
+
+                for out_one, logit_one, label_one, index_one in zip(net_out, logits, labels, indexes):
+                    if label_one != 1 and out_one == 1 and logit_one[1] > 0.90:
+                        images_list[index_one][0] = 1
+                        count += 1
+                        pass
+                    pass
+                pass
+            pass
+        Tools.write_to_pkl(result_path, _data=images_list)
+        Tools.print("change num = {}".format(count))
+        pass
+
     def eval_person(self, epoch=0, model_file_name=None):
         if model_file_name is not None:
             Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.person_save_result_txt)
@@ -210,18 +236,31 @@ def train(config):
         # person_runner.eval_person(epoch=0, model_file_name=os.path.join(config.person_model_dir, "person_5.pth"))
         pass
 
+    if config.has_change_person:
+        # person_runner.load_model(model_file_name=os.path.join(
+        #     config.person_model_dir, "person_final_{}.pth".format(config.person_epoch_num)))
+        person_runner.load_model(model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_144_5_224/person_45.pth")
+        person_runner.eval_person(epoch=0)
+
+        result_path = os.path.join(config.person_model_dir, "person2.pkl")
+        person_runner.save_person_result(result_path=result_path)
+        shutil.copy(result_path, os.path.join(config.data_root_path, "deal"))
+        pass
+
     pass
 
 
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "0, 1, 2, 3"
+        # self.gpu_id = "0, 1, 2, 3"
+        self.gpu_id = "1, 2, 3"
         # self.gpu_id = "1, 2"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
-        self.has_train_person = True  # 是否训练person
+        self.has_train_person = False  # 是否训练person
+        self.has_change_person = True
 
         self.person_num_classes = 2
         self.person_epoch_num = 50
@@ -267,6 +306,7 @@ class Config(object):
 """
 val acc:0.9403 ../../../WSS_Model_Person/1_ClassNet_2_15_192_2_224/person_final_15.pth
 val acc:0.9858 ../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth
+val acc:0.9887 ../../../WSS_Model_Person/1_ClassNet_2_50_144_5_224/person_45.pth 25687
 """
 
 

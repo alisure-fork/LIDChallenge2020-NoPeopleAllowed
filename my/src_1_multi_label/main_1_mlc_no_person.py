@@ -38,13 +38,13 @@ class CAMRunner(object):
         cudnn.benchmark = True
 
         # 不同层设置不同的学习率
-        # head_linear = list(map(id, self.net.module.head_linear.parameters()))
-        # base_params = filter(lambda p: id(p) not in head_linear, self.net.module.parameters())
-        # self.optimizer = optim.Adam([
-        #     {'params': base_params},
-        #     {'params': self.net.module.head_linear.parameters(), 'lr': self.config.mlc_lr * 10}],
-        #     lr=self.config.mlc_lr, betas=(0.9, 0.999), weight_decay=0)
-        self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.mlc_lr * 10, betas=(0.9, 0.999), weight_decay=0)
+        head_linear = list(map(id, self.net.module.head_linear.parameters()))
+        base_params = filter(lambda p: id(p) not in head_linear, self.net.module.parameters())
+        self.optimizer = optim.Adam([
+            {'params': base_params},
+            {'params': self.net.module.head_linear.parameters(), 'lr': self.config.mlc_lr * 10}],
+            lr=self.config.mlc_lr, betas=(0.9, 0.999), weight_decay=0)
+        # self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.mlc_lr * 10, betas=(0.9, 0.999), weight_decay=0)
 
         # Loss
         self.bce_loss = nn.BCEWithLogitsLoss().cuda()
@@ -220,18 +220,18 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "0, 1, 2, 3"
+        # self.gpu_id = "0, 1, 2, 3"
         # self.gpu_id = "0"
         # self.gpu_id = "0, 1"
-        # self.gpu_id = "1, 2, 3"
+        self.gpu_id = "1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
         self.has_train_mlc = True  # 是否训练MLC
 
         self.mlc_num_classes = 199
-        self.mlc_epoch_num = 50
-        self.mlc_change_epoch = 30
+        self.mlc_epoch_num = 80
+        self.mlc_change_epoch = 50
         self.mlc_batch_size = 32 * len(self.gpu_id.split(","))
         self.mlc_lr = 0.0001
         self.mlc_save_epoch_freq = 5
@@ -270,9 +270,8 @@ class Config(object):
 
 
 """
-1/20 val mae:0.0775 f1:0.9067 ../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth
-1/1  val mae:0.1017 f1:0.8701 ../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_40.pth
-1/1  val mae:0.0830 f1:0.8742 ../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth
+loss: 0.0083 mae:0.0881 f1:0.8698 acc:0.8698 ../../../WSS_Model_No_Person/1_CAMNet_199_50_128_5_224/mlc_final_50.pth
+loss: 0.0070 mae:0.0736 f1:0.8932 acc:0.8932 ../../../WSS_Model_No_Person/1_CAMNet_199_80_96_5_224/mlc_75.pth
 """
 
 

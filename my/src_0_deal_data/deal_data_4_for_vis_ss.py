@@ -4,10 +4,11 @@ from glob import glob
 from tqdm import tqdm
 from PIL import Image
 from alisuretool.Tools import Tools
+from deal_data_0_global_info import get_data_root_path
 
 
 if __name__ == '__main__':
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+    data_root = get_data_root_path()
     annotations_raw_path = os.path.join(data_root, "LID_track1_annotations", "track1_val_annotations_raw")
     annotations_color_path = os.path.join(data_root, "LID_track1_annotations", "track1_val_annotations")
 

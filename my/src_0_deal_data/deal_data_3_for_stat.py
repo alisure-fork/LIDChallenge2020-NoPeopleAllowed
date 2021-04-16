@@ -5,12 +5,15 @@ from tqdm import tqdm
 import scipy.io as scio
 import xml.etree.ElementTree as ET
 from alisuretool.Tools import Tools
+from deal_data_0_global_info import get_data_root_path
 
 
 if __name__ == '__main__':
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
-    image_info_path = os.path.join(data_root, "deal", "image_info_list.pkl")
+    data_root = get_data_root_path()
+    image_info_path = os.path.join(data_root, "deal", "image_info_list2.pkl")
     image_info_list = Tools.read_from_pkl(image_info_path)
+
+    # [one for one in image_info_list if len(one["object"]) > 0]
 
     cat_list = {}
     cat_single_list = {}

@@ -11,11 +11,12 @@ from PIL import Image
 import torch.optim as optim
 from sklearn import metrics
 import torch.nn.functional as F
-from util_network import CAMNet
-from util_data import DatasetUtil
 from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, Dataset
+sys.path.append("../../")
+from util_data import DatasetUtil
+from util_network import CAMNet, ClassNet
 
 
 class CAMRunner(object):
@@ -23,14 +24,13 @@ class CAMRunner(object):
     def __init__(self, config):
         self.config = config
 
-        self.dataset_mlc_train = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_mlc_train, image_size=self.config.mlc_size, data_root=self.config.data_root_path)
-        self.dataset_mlc_val = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_mlc_val, image_size=self.config.mlc_size, data_root=self.config.data_root_path)
-        self.data_loader_mlc_train = DataLoader(self.dataset_mlc_train, self.config.mlc_batch_size,
-                                                shuffle=True, num_workers=16)
-        self.data_loader_mlc_val = DataLoader(self.dataset_mlc_val, self.config.mlc_batch_size,
-                                                shuffle=False, num_workers=16)
+        self.dataset_mlc_train, self.dataset_mlc_val, _ = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_mlc, image_size=self.config.mlc_size,
+            data_root=self.config.data_root_path, sampling=self.config.sampling)
+        self.data_loader_mlc_train = DataLoader(
+            self.dataset_mlc_train, self.config.mlc_batch_size, shuffle=False, num_workers=16)
+        self.data_loader_mlc_val = DataLoader(
+            self.dataset_mlc_val, self.config.mlc_batch_size, shuffle=False, num_workers=16)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.mlc_num_classes)
@@ -38,14 +38,13 @@ class CAMRunner(object):
         cudnn.benchmark = True
 
         # 不同层设置不同的学习率
-        head_conv = list(map(id, self.net.module.head_conv.parameters()))
         head_linear = list(map(id, self.net.module.head_linear.parameters()))
-        base_params = filter(lambda p: id(p) not in head_conv + head_linear, self.net.module.parameters())
+        base_params = filter(lambda p: id(p) not in head_linear, self.net.module.parameters())
         self.optimizer = optim.Adam([
             {'params': base_params},
-            {'params': self.net.module.head_conv.parameters(), 'lr': self.config.mlc_lr * 10},
             {'params': self.net.module.head_linear.parameters(), 'lr': self.config.mlc_lr * 10}],
             lr=self.config.mlc_lr, betas=(0.9, 0.999), weight_decay=0)
+        # self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.mlc_lr * 10, betas=(0.9, 0.999), weight_decay=0)
 
         # Loss
         self.bce_loss = nn.BCEWithLogitsLoss().cuda()
@@ -72,6 +71,7 @@ class CAMRunner(object):
             # 1 训练模型
             all_loss = 0.0
             self.net.train()
+            self.dataset_mlc_train.reset()
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_mlc_train),
                                             total=len(self.data_loader_mlc_train)):
                 inputs, labels = inputs.type(torch.FloatTensor).cuda(), labels.cuda()
@@ -79,13 +79,13 @@ class CAMRunner(object):
 
                 result = self.net(inputs)
                 loss = self.bce_loss(result, labels)
-                ######################################################################################################
 
                 loss.backward()
                 self.optimizer.step()
 
                 all_loss += loss.item()
                 pass
+            ###########################################################################
 
             Tools.print("[E:{:3d}/{:3d}] mlc loss:{:.4f}".format(
                 epoch, self.config.mlc_epoch_num, all_loss/len(self.data_loader_mlc_train)),
@@ -231,18 +231,19 @@ class Config(object):
         self.has_train_mlc = True  # 是否训练MLC
 
         self.mlc_num_classes = 200
-        self.mlc_epoch_num = 15
-        self.mlc_change_epoch = 10
+        self.mlc_epoch_num = 50
+        self.mlc_change_epoch = 30
         self.mlc_batch_size = 32 * len(self.gpu_id.split(","))
-        self.mlc_lr = 0.00001
-        self.mlc_save_epoch_freq = 2
-        self.mlc_eval_epoch_freq = 2
+        self.mlc_lr = 0.0001
+        self.mlc_save_epoch_freq = 5
+        self.mlc_eval_epoch_freq = 5
 
         # 图像大小
         self.mlc_size = 224
+        self.sampling = False
 
         # 网络
-        self.Net = CAMNet
+        self.Net = ClassNet
 
         self.data_root_path = self.get_data_root_path()
 
@@ -273,6 +274,8 @@ class Config(object):
 1/20 val mae:0.0775 f1:0.9067 ../../../WSS_Model/demo_CAMNet_200_60_128_5_224/mlc_final_60.pth
 1/1  val mae:0.1017 f1:0.8701 ../../../WSS_Model/1_CAMNet_200_60_128_5_256/mlc_40.pth
 1/1  val mae:0.0830 f1:0.8742 ../../../WSS_Model/1_CAMNet_200_15_96_2_224/mlc_final_15.pth
+
+1/1  val mae:0.0939 f1:0.8533 ../../../WSS_Model/1_CAMNet_200_50_96_5_224/mlc_final_50.pth
 """
 
 

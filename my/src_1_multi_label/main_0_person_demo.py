@@ -52,12 +52,23 @@ class PersonRunner(object):
         Tools.print("Restore from {}".format(model_file_name))
         pass
 
+    @staticmethod
+    def get_data_root_path():
+        if "Linux" in platform.platform():
+            data_root = '/mnt/4T/Data/data/L2ID/data'
+            if not os.path.isdir(data_root):
+                data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+        else:
+            data_root = "F:\\data\\L2ID\\data"
+        return data_root
+
     pass
 
 
 """
 val acc:0.9403 ../../../WSS_Model_Person/1_ClassNet_2_15_192_2_224/person_final_15.pth
 val acc:0.9858 ../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth
+val acc:0.9887 ../../../WSS_Model_Person/1_ClassNet_2_50_144_5_224/person_45.pth 25687
 """
 
 
@@ -65,7 +76,7 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     cam_runner = PersonRunner(image_size=224, num_classes=2)
-    data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data/ILSVRC2017_DET/ILSVRC/Data/DET"
+    data_root = os.path.join(cam_runner.get_data_root_path(), "ILSVRC2017_DET/ILSVRC/Data/DET")
 
     # image_filename_list = ["train/ILSVRC2014_train_0006/ILSVRC2014_train_00060002.JPEG",
     #                        "train/ILSVRC2014_train_0006/ILSVRC2014_train_00060024.JPEG",
@@ -84,6 +95,6 @@ if __name__ == '__main__':
     # all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2013_train/n02110806", "*.JPEG"))
     all_image_file = glob.glob(os.path.join(data_root, "train/ILSVRC2014_train_0006", "*.JPEG"))
 
-    cam_runner.demo_person(image_filename_list=all_image_file,
-                           model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_192_5_224/person_final_50.pth")
+    cam_runner.demo_person(image_filename_list=sorted(all_image_file),
+                           model_file_name="../../../WSS_Model_Person/1_ClassNet_2_50_144_5_224/person_45.pth")
     pass

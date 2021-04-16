@@ -1,12 +1,14 @@
 import os
 import numpy as np
 from glob import glob
-import xml.etree.ElementTree as ET
 import scipy.io as scio
+import xml.etree.ElementTree as ET
+from deal_data_0_global_info import get_data_root_path
 
-data = scio.loadmat(os.path.join("/media/ubuntu/4T/ALISURE/Data/L2ID/data", 'meta_det.mat'))
+
+data = scio.loadmat(os.path.join(get_data_root_path(), 'meta_det.mat'))
 # anno_dir = './ILSVRC_DET/Annotations/DET/train'
-anno_dir = "/media/ubuntu/4T/ALISURE/Data/L2ID/data/ILSVRC2017_DET/ILSVRC/Annotations/DET/train"
+anno_dir = os.path.join(get_data_root_path(), "ILSVRC2017_DET/ILSVRC/Annotations/DET/train")
 xml_files = sorted(glob(os.path.join(anno_dir, 'ILSVRC2013_train/*/*.xml')))
 xml_files_2014 = sorted(glob(os.path.join(anno_dir, '*/*.xml')))
 xml_files.extend(xml_files_2014)

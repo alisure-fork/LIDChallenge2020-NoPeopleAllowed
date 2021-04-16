@@ -312,7 +312,7 @@ class DataUtil(object):
     @staticmethod
     def get_data_info(data_root=None):
         data_root = data_root if data_root is not None else "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
-        image_info_path = os.path.join(data_root, "deal", "image_info_list.pkl")
+        image_info_path = os.path.join(data_root, "deal", "image_info_list2.pkl")
         image_info_list = Tools.read_from_pkl(image_info_path)
         return image_info_list
 
@@ -380,9 +380,10 @@ class DataUtil(object):
         pass
 
     @staticmethod
-    def get_class_name(mat_file=None):
-        mat_file = mat_file if mat_file is not None else "/media/ubuntu/4T/ALISURE/Data/L2ID/data/meta_det.mat"
-        data = scio.loadmat(mat_file)
+    def get_class_name(data_root=None, mat_file=None):
+        data_root = data_root if data_root is not None else "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+        mat_file = mat_file if mat_file is not None else "meta_det.mat"
+        data = scio.loadmat(os.path.join(data_root, mat_file))
 
         label_info_dict = {}
         name_to_label_id = {}
@@ -599,7 +600,37 @@ class ImageNetMLC(Dataset):
     pass
 
 
-class ImageNetMLCNoPerson(Dataset):
+class ImageNetMLCScales(Dataset):
+    """ImageNet dataset for multi-label classification"""
+
+    def __init__(self, images_list, transform_list, num_classes, return_image_info=False):
+        self.images_list = images_list
+        self.transform_list = transform_list
+        self.num_classes = num_classes
+        self.return_image_info = return_image_info
+        pass
+
+    def __len__(self):
+        return len(self.images_list)
+
+    def __getitem__(self, idx):
+        image_label, image_path = self.images_list[idx]
+
+        image = Image.open(image_path).convert("RGB")
+        image_list = [transform(image) for transform in self.transform_list]
+
+        label_encoded = torch.zeros(self.num_classes, dtype=torch.float32)
+        label_encoded[np.array(image_label, dtype=np.int) - 1] = 1
+
+        if self.return_image_info:
+            return image_list, label_encoded, image_path
+        return image_list, label_encoded
+
+    pass
+
+
+class ImageNetMLCBalance(Dataset):
+    """ImageNet dataset for multi-label classification"""
 
     def __init__(self, images_list, transform, num_classes, return_image_info=False, sample_num=None):
         self.images_list = images_list
@@ -663,14 +694,22 @@ class ImageNetSegmentation(Dataset):
         label_path, image_path = self.images_list[idx]
 
         image = Image.open(image_path).convert("RGB")
-        mask = Image.open(label_path)
-        image, mask = self.transform(image, mask)
 
-        if self.return_image_info:
-            return image, mask, image_path
+        if label_path is not None:
+            mask = Image.open(label_path)
+            image, mask = self.transform(image, mask)
+            if self.return_image_info:
+                return image, mask, image_path
+            return image, mask
+        else:
+            mask = Image.fromarray(np.zeros_like(np.asarray(image)))
+            image, _ = self.transform(image, mask)
+            if self.return_image_info:
+                return image, image_path
+            return image
+            pass
 
-        return image, mask
-
+        pass
 
     pass
 
@@ -704,19 +743,16 @@ class VOCSegmentation(Dataset):
 class DatasetUtil(object):
 
     dataset_type_person = "person"
-    dataset_type_mlc_train = "mlc_train"
-    dataset_type_mlc_val = "mlc_val"
     dataset_type_mlc_no_person = "mlc_no_person"
-    dataset_type_vis_cam = "vis_cam"
-    dataset_type_ss_train = "ss_train"
-    dataset_type_ss_val = "ss_val"
-    dataset_type_ss_test = "ss_test"
+    dataset_type_mlc = "mlc"
+    dataset_type_ss = "ss"
+
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
     dataset_type_ss_voc_val_center = "ss_voc_val_center"
 
     @classmethod
-    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None,
+    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, scales=None,
                             return_image_info=False, sampling=False, train_label_path=None):
         ################################################################################################################
         if dataset_type == cls.dataset_type_person:
@@ -762,25 +798,20 @@ class DatasetUtil(object):
                                                          return_image_info=return_image_info)
             return data_0, data_1
         ################################################################################################################
-        elif dataset_type == cls.dataset_type_mlc_train:
+        elif dataset_type == cls.dataset_type_mlc:
             data_info = DataUtil.get_data_info(data_root=data_root)
             data_info = data_info[::20] if sampling else data_info
+            sample_num = 20 if sampling else None
+
             label_image_path = [[[one_object[2] for one_object in one_data["object"]],
                                  one_data["image_path"]] for one_data in data_info]
-            return cls._get_imagenet_mlc_train(label_image_path, image_size=image_size,
-                                               return_image_info=return_image_info)
-        elif dataset_type == cls.dataset_type_mlc_val:
-            data_info = DataUtil.get_data_info(data_root=data_root)
-            data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[[one_object[2] for one_object in one_data["object"]],
-                                 one_data["image_path"]] for one_data in data_info]
-            return cls._get_imagenet_mlc_val(label_image_path, image_size, return_image_info=return_image_info)
-        elif dataset_type == cls.dataset_type_vis_cam:
-            data_info = DataUtil.get_data_info(data_root=data_root)
-            data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[[one_object[2] for one_object in one_data["object"]],
-                                 one_data["image_path"]] for one_data in data_info]
-            return cls._get_imagenet_vis_cam(label_image_path, image_size, return_image_info=return_image_info)
+
+            train =  cls._get_imagenet_mlc_train(
+                label_image_path, image_size=image_size, return_image_info=return_image_info, sample_num=sample_num)
+            val = cls._get_imagenet_mlc_val(label_image_path, image_size, return_image_info=return_image_info)
+            cam = cls._get_imagenet_vis_cam(label_image_path, image_size,
+                                            scales=scales, return_image_info=return_image_info)
+            return train, val, cam
         ################################################################################################################
         elif dataset_type == cls.dataset_type_ss_voc_train:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
@@ -798,21 +829,22 @@ class DatasetUtil(object):
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             return cls._get_voc_ss_val_center(label_image_path, image_size, return_image_info=return_image_info)
         ################################################################################################################
-        elif dataset_type == cls.dataset_type_ss_train:
+        elif dataset_type == cls.dataset_type_ss:
             data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_dir=train_label_path)
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
-            return cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
-        elif dataset_type == cls.dataset_type_ss_val:
+            train =  cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
+
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
-            return cls._get_ss_val(label_image_path, image_size, return_image_info=return_image_info)
-        elif dataset_type == cls.dataset_type_ss_test:
+            val = cls._get_ss_val(label_image_path, image_size, return_image_info=return_image_info)
+
             data_info = DataUtil.get_ss_info(data_root=data_root, split="test")
             data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
-            return cls._get_ss_test(label_image_path, image_size, return_image_info=return_image_info)
+            label_image_path = [[None, one_data["image_path"]] for one_data in data_info]
+            test = cls._get_ss_test(label_image_path, image_size, return_image_info=return_image_info)
+            return train, val, test
         ################################################################################################################
         else:
             raise Exception("....")
@@ -855,10 +887,10 @@ class DatasetUtil(object):
         return voc
 
     @staticmethod
-    def _get_imagenet_mlc_train(label_image_path, image_size, return_image_info):
+    def _get_imagenet_mlc_train(label_image_path, image_size, return_image_info, sample_num=None):
         transform_train, transform_test = MyTransform.transform_train_cam(image_size=image_size)
-        imagenet_mlc = ImageNetMLC(images_list=label_image_path, num_classes=200,
-                                   transform=transform_train, return_image_info=return_image_info)
+        imagenet_mlc = ImageNetMLCBalance(images_list=label_image_path, num_classes=200, sample_num=sample_num,
+                                          transform=transform_train, return_image_info=return_image_info)
         return imagenet_mlc
 
     @staticmethod
@@ -869,10 +901,20 @@ class DatasetUtil(object):
         return imagenet_mlc
 
     @staticmethod
-    def _get_imagenet_vis_cam(label_image_path, image_size, return_image_info):
-        transform_test = MyTransform.transform_vis_cam(image_size=image_size)
-        imagenet_cam = ImageNetMLC(images_list=label_image_path, num_classes=200,
-                                   transform=transform_test, return_image_info=return_image_info)
+    def _get_imagenet_vis_cam(label_image_path, image_size, return_image_info, scales=None):
+        transform_test_list = []
+        if scales is None:
+            transform_test = MyTransform.transform_vis_cam(image_size=image_size)
+            transform_test_list.append(transform_test)
+        else:
+            for scale in scales:
+                transform_test = MyTransform.transform_vis_cam(image_size=int(scale * image_size))
+                transform_test_list.append(transform_test)
+                pass
+            pass
+
+        imagenet_cam = ImageNetMLCScales(images_list=label_image_path, num_classes=200,
+                                         transform_list=transform_test_list, return_image_info=return_image_info)
         return imagenet_cam
 
     @staticmethod
@@ -899,8 +941,8 @@ class DatasetUtil(object):
     @staticmethod
     def _get_imagenet_mlc_no_person_train(label_image_path, image_size, return_image_info, sample_num=None):
         transform_train, transform_test = MyTransform.transform_train_cam(image_size=image_size)
-        mlc_no_person = ImageNetMLCNoPerson(images_list=label_image_path, num_classes=199, sample_num=sample_num,
-                                            transform=transform_train, return_image_info=return_image_info)
+        mlc_no_person = ImageNetMLCBalance(images_list=label_image_path, num_classes=199, sample_num=sample_num,
+                                           transform=transform_train, return_image_info=return_image_info)
         return mlc_no_person
 
     @staticmethod

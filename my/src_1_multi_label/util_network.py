@@ -52,6 +52,21 @@ class ClassNet(nn.Module):
     def forward(self, x, is_vis=False):
         features = self.backbone.features(x)
         out_features = features
+
+        features = F.adaptive_avg_pool2d(features, output_size=(1, 1)).view((features.size()[0], -1))
+        logits = self.head_linear(features)
+
+        if is_vis:
+            shape = self.head_linear.weight.shape
+            out_features = F.conv2d(out_features, self.head_linear.weight.view((shape[0], shape[1], 1, 1)))
+            out_features = F.relu(out_features)
+            return logits, out_features
+
+        return logits
+
+    def forward_old(self, x, is_vis=False):
+        features = self.backbone.features(x)
+        out_features = features
         features = F.adaptive_avg_pool2d(features, output_size=(1, 1)).view((features.size()[0], -1))
 
         logits = self.head_linear(features)
