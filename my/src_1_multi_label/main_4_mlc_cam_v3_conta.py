@@ -126,34 +126,31 @@ class CAMRunner(object):
             # 预测结果, 对结果进行彩色可视化
             np_single_cam = 0
             np_cam = np.zeros(shape=(self.config.mlc_num_classes + 1, image_size[1], image_size[0]))
+            np_cam[0] = self.config.fg_thr * 255  # 0.25
             for label in label_for_cam_one:
                 cam_resize = [self.torch_resize(cam, (self.config.mlc_size, self.config.mlc_size)) for cam in cam_one[label]]
                 norm_cam = np.sum(cam_resize, axis=0) / len(cam_resize)
+                norm_cam = norm_cam / np.max(norm_cam)
 
                 now_cam_im = Image.fromarray(np.asarray(norm_cam * 255, dtype=np.uint8)).resize(size=image_size)
                 now_cam_im.save(result_filename.replace(".JPEG", "_{}.bmp".format(label + 1)))
                 np_cam[label + 1] = np.asarray(now_cam_im)
 
                 np_single_cam += np.asarray(now_cam_im, dtype=np.float)
-
-                image_input = np.asarray(im.resize((self.config.mlc_size, self.config.mlc_size)))
-                cam_crf_one = CRFTool.crf(image_input, np.expand_dims(norm_cam, axis=0), t=5)
-                now_cam_crf_im = Image.fromarray(np.asarray(cam_crf_one * 255, dtype=np.uint8)).resize(size=image_size)
-                now_cam_crf_im.save(result_filename.replace(".JPEG", "_crf_{}.bmp".format(label + 1)))
-                # np_cam[label + 1] = np_cam[label + 1] / 2 + np.asarray(now_cam_crf_im) / 2
                 pass
 
-            np_cam[0] = self.config.fg_thr * 255  # 0.5
-            cam_label = np.asarray(np.argmax(np_cam, axis=0), dtype=np.uint8)
+            # cam_crf_one = CRFTool.crf_inference(np.asarray(im), np_cam / 255, t=5, n_label=len(np_cam))
+            # cam_crf_one = np.asarray(np.argmax(cam_crf_one, axis=0), dtype=np.uint8)
+            # now_cam_crf_im = DataUtil.gray_to_color(cam_crf_one)
+            # now_cam_crf_im.save(result_filename.replace(".JPEG", "_crf.png"))
 
+            cam_label = np.asarray(np.argmax(np_cam, axis=0), dtype=np.uint8)
             cam_label[cam_label == 0] = 255
             if len(label_for_cam_one) > 0:
-                cam_label[(np_single_cam / len(label_for_cam_one)) < self.config.bg_thr * 255] = 0  # 0.1
+                cam_label[(np_single_cam / len(label_for_cam_one)) < self.config.bg_thr * 255] = 0  # 0.05
                 pass
-
             im_color = DataUtil.gray_to_color(cam_label).resize(size=image_size, resample=Image.NEAREST)
             im_color.save(result_filename.replace("JPEG", "png"))
-            pass
         except Exception():
             Tools.print("{} {}".format(index, pkl_path))
             pass
@@ -247,7 +244,7 @@ class Config(object):
         self.top_k_thr = 0.5
 
         self.bg_thr = 0.05
-        self.fg_thr = 0.25
+        self.fg_thr = 0.33
 
         self.data_root_path = self.get_data_root_path()
 
@@ -268,7 +265,7 @@ class Config(object):
             run_name, self.mlc_num_classes, self.mlc_batch_size, self.mlc_size, self.top_k_thr)
         Tools.print(self.model_name)
 
-        self.mlc_cam_dir = "../../../WSS_CAM/cam_{}/2_{}".format(len(self.scales), self.model_name)
+        self.mlc_cam_dir = "../../../WSS_CAM/cam_{}/3_{}".format(len(self.scales), self.model_name)
         self.mlc_cam_pkl_dir = "../../../WSS_CAM/pkl_{}/{}".format(len(self.scales), self.model_name)
         pass
 

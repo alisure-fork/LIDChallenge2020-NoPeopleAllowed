@@ -26,7 +26,7 @@ class SSRunner(object):
         self.config = config
 
         # Data
-        self.dataset_ss_train, self.dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
+        self.dataset_ss_train, _, self.dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss, self.config.ss_size,
             data_root=self.config.data_root_path, train_label_path=self.config.label_path)
         self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size, True, num_workers=16)
@@ -197,7 +197,7 @@ class Config(object):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
-        self.has_train_ss = True  # 是否训练SS
+        self.has_train_ss = False  # 是否训练SS
         self.has_eval_ss = True  # 是否评估SS
 
         self.ss_num_classes = 201
@@ -218,6 +218,7 @@ class Config(object):
         self.data_root_path = self.get_data_root_path()
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
         self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
+        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
 
         run_name = "2"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
@@ -255,6 +256,12 @@ Overall Acc: 0.731829
 Mean Acc: 0.483936
 FreqW Acc: 0.604147
 Mean IoU: 0.259592
+
+../../../WSS_Model_SS/3_DeepLabV3PlusResNet101_201_10_24_1_352/ss_0.pth
+Overall Acc: 0.761370
+Mean Acc: 0.315599
+FreqW Acc: 0.605419
+Mean IoU: 0.220519
 """
 
 

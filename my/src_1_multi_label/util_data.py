@@ -350,6 +350,7 @@ class DataUtil(object):
                 "/media/ubuntu/4T/ALISURE/USS/WSS_CAM/cam/2_CAMNet_200_32_256_0.5"
 
             data_info = cls.get_data_info(data_root=data_root)
+            train_image_label = [[one[2] for one in one_data["object"]] for one_data in data_info]
             train_image_path = [one_data["image_path"] for one_data in data_info]
 
             ########################################################
@@ -362,8 +363,8 @@ class DataUtil(object):
             train_label_path = [one_image_path.replace(os.path.join(
                 data_root, "ILSVRC2017_DET/ILSVRC/Data/DET"),
                 train_label_dir).replace(".JPEG", ".png") for one_image_path in train_image_path]
-            return [{"image_path": image, "label_path": mask} for image, mask in
-                                     zip(train_image_path, train_label_path)]
+            return [{"image_path": image, "label_path": mask, "label": label} for image, mask, label in
+                                     zip(train_image_path, train_label_path, train_image_label)]
 
         if split == "test":
             test_data_dir = os.path.join(data_root, "LID_track1_imageset/LID_track1/test")
@@ -505,6 +506,13 @@ class MyTransform(object):
         # transform_test = ExtCompose([ExtResize(size=image_size), ExtToTensor(),
         #                              ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         return transform_train, transform_test
+
+    @classmethod
+    def transform_train_ss_2(cls, image_size=513):
+        transform_test = ExtCompose([
+            ExtResize(size=(image_size, image_size)), ExtToTensor(),
+            ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        return transform_test
 
     @classmethod
     def transform_test_ss(cls, image_size=513):
@@ -714,6 +722,54 @@ class ImageNetSegmentation(Dataset):
     pass
 
 
+class ImageNetSegmentationBalance(Dataset):
+
+    def __init__(self, images_list, transform, return_image_info=False, sample_num=None):
+        self.transform = transform
+        self.images_list = images_list
+        self.return_image_info = return_image_info
+        self.train_images_list = None
+        self.sample_num = sample_num if sample_num is not None else 500
+
+        self.all_image_dict = {}
+        for one in self.images_list:
+            now_one = set(one[2])
+            if len(now_one) <= 2:
+                for one_one in now_one:
+                    if one_one not in self.all_image_dict:
+                        self.all_image_dict[one_one] = []
+                    self.all_image_dict[one_one].append(one)
+                    pass
+                pass
+            pass
+
+        self.reset()
+        pass
+
+    def __len__(self):
+        return len(self.train_images_list)
+
+    def reset(self):
+        image_list = [random.choices(self.all_image_dict[key], k=self.sample_num) for key in self.all_image_dict]
+        self.train_images_list = []
+        for select_image in image_list:
+            self.train_images_list += select_image
+        np.random.shuffle(self.train_images_list)
+        pass
+
+    def __getitem__(self, idx):
+        label_path, image_path, _ = self.train_images_list[idx]
+
+        image = Image.open(image_path).convert("RGB")
+        mask = Image.open(label_path)
+        image, mask = self.transform(image, mask)
+        if self.return_image_info:
+            return image, mask, image_path
+        return image, mask
+
+    pass
+
+
 class VOCSegmentation(Dataset):
 
     def __init__(self, images_list, transform, return_image_info=False):
@@ -832,8 +888,12 @@ class DatasetUtil(object):
         elif dataset_type == cls.dataset_type_ss:
             data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_dir=train_label_path)
             data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            label_image_path = [[one_data["label_path"], one_data["image_path"],
+                                 one_data["label"]] for one_data in data_info]
             train =  cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
+
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            train_eval = cls._get_ss_train_eval(label_image_path, image_size, return_image_info=return_image_info)
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
@@ -844,7 +904,7 @@ class DatasetUtil(object):
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"]] for one_data in data_info]
             test = cls._get_ss_test(label_image_path, image_size, return_image_info=return_image_info)
-            return train, val, test
+            return train, train_eval, val, test
         ################################################################################################################
         else:
             raise Exception("....")
@@ -853,7 +913,13 @@ class DatasetUtil(object):
     @staticmethod
     def _get_ss_train(label_image_path, image_size, return_image_info):
         transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
-        seg = ImageNetSegmentation(label_image_path, transform=transform_train, return_image_info=return_image_info)
+        seg = ImageNetSegmentationBalance(label_image_path, transform_train, return_image_info=return_image_info)
+        return seg
+
+    @staticmethod
+    def _get_ss_train_eval(label_image_path, image_size, return_image_info):
+        transform_test = MyTransform.transform_train_ss_2(image_size=image_size)
+        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
         return seg
 
     @staticmethod

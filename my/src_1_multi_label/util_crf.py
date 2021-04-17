@@ -54,7 +54,7 @@ class CRFTool(object):
         return result
 
     @staticmethod
-    def crf_label(image, annotation, t=5, n_label=2, a=0.3, b=0.5):
+    def crf_label(image, annotation, t=5, n_label=2, a=0.05, b=0.25):
         image = np.ascontiguousarray(image)
         h, w = image.shape[:2]
         annotation = np.squeeze(np.array(annotation))
@@ -76,6 +76,32 @@ class CRFTool(object):
         result = map_result.reshape((h, w))
         return result
 
+    @staticmethod
+    def crf_label_2(image, annotation, t=5, n_label=2, a=0.05, b=0.25):
+        image = np.ascontiguousarray(image)
+        h, w = image.shape[:2]
+        annotation = np.squeeze(np.array(annotation))
+
+        label_extend = np.array(annotation, dtype=np.int)
+        label_extend[label_extend == 0] = 201
+        label_extend[label_extend == 255] = 0
+        true_label, label = np.unique(label_extend, return_inverse=True)
+
+        d = dcrf.DenseCRF2D(w, h, n_label)
+        u = unary_from_labels(label, n_label, gt_prob=0.7, zero_unsure=True)
+        u = np.ascontiguousarray(u)
+        d.setUnaryEnergy(u)
+        d.addPairwiseGaussian(sxy=(3, 3), compat=3)
+        d.addPairwiseBilateral(sxy=(80, 80), srgb=(13, 13, 13), rgbim=np.copy(image), compat=10)
+        q = d.inference(t)
+        map_result = np.argmax(q, axis=0)
+        result = map_result.reshape((h, w))
+
+        true_result = true_label[result]
+        true_result[true_result == 0] = 255
+        true_result[true_result == 201] = 0
+        return true_result
+
     @classmethod
     def crf_torch(cls, img, annotation, t=5, is_dss=False):
         img_data = np.asarray(img, dtype=np.uint8)
@@ -92,5 +118,21 @@ class CRFTool(object):
             result.append(np.expand_dims(result_one, axis=0))
             pass
         return torch.tensor(np.asarray(result))
+
+    @staticmethod
+    def crf_inference(img, probs, t=10, scale_factor=1, n_label=201):
+        h, w = img.shape[:2]
+
+        d = dcrf.DenseCRF2D(w, h, n_label)
+
+        unary = unary_from_softmax(probs)
+        unary = np.ascontiguousarray(unary)
+
+        d.setUnaryEnergy(unary)
+        d.addPairwiseGaussian(sxy=3 / scale_factor, compat=3)
+        d.addPairwiseBilateral(sxy=80 / scale_factor, srgb=13, rgbim=np.copy(img), compat=10)
+        Q = d.inference(t)
+
+        return np.array(Q).reshape((n_label, h, w))
 
     pass
