@@ -29,8 +29,10 @@ class SSRunner(object):
         self.dataset_ss_train, _, self.dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss, self.config.ss_size,
             data_root=self.config.data_root_path, train_label_path=self.config.label_path)
-        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size, True, num_workers=16)
-        self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size, False, num_workers=16)
+        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
+                                               True, num_workers=16, drop_last=True)
+        self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
+                                             False, num_workers=16, drop_last=True)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
@@ -80,6 +82,10 @@ class SSRunner(object):
                 self.optimizer.step()
 
                 all_loss += loss.item()
+
+                if (i + 1) % (len(self.data_loader_ss_train) // 10) == 0:
+                    self.eval_ss(epoch=epoch)
+                    pass
                 pass
             self.scheduler.step()
             ###########################################################################
@@ -190,20 +196,20 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id = "0, 1, 2, 3"
+        self.gpu_id = "0, 1, 2, 3"
         # self.gpu_id = "0"
         # self.gpu_id = "0, 1"
-        self.gpu_id = "1, 2, 3"
+        # self.gpu_id = "1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
-        self.has_train_ss = False  # 是否训练SS
-        self.has_eval_ss = True  # 是否评估SS
+        self.has_train_ss = True  # 是否训练SS
+        self.has_eval_ss = False  # 是否评估SS
 
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
         self.ss_milestones = [5, 7]
-        self.ss_batch_size = 12 * (len(self.gpu_id.split(",")) - 1)
+        self.ss_batch_size = 6 * (len(self.gpu_id.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
         self.ss_eval_epoch_freq = 1
@@ -217,10 +223,11 @@ class Config(object):
 
         self.data_root_path = self.get_data_root_path()
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
-        self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
+        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
+        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
 
-        run_name = "2"
+        run_name = "4"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num,
             self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)

@@ -106,9 +106,12 @@ class SSRunner(object):
                     im.save(result_filename)
 
                     DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).resize(im.size).save(
-                        result_filename.replace(".JPEG", ".png"))
+                        result_filename.replace(".JPEG", "_new.png"))
                     DataUtil.gray_to_color(np.asarray(label_one, dtype=np.uint8)).resize(im.size).save(
                         result_filename.replace(".JPEG", "_old.png"))
+                    pred_one[pred_one != label_one & label_one != 255] = 255
+                    DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).resize(im.size).save(
+                        result_filename.replace(".JPEG", ".png"))
                     pass
                 pass
             pass
@@ -175,14 +178,20 @@ def train(config):
 
     data_loader_ss_val = None
     for epoch in range(0, config.ss_epoch_num):
-        train_label_path = config.label_path if epoch == 0 else config.ss_train_eval_save_dir
 
+        train_label_path = config.ss_train_eval_save_dir if epoch > 0 and config.has_train_eval_ss else config.label_path
         dataset_ss_train, dataset_ss_train_eval, dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss, config.ss_size, data_root=config.data_root_path,
             train_label_path=train_label_path, return_image_info=True, sampling=config.sampling)
         data_loader_ss_train = DataLoader(dataset_ss_train, config.ss_batch_size, True, num_workers=16)
         data_loader_ss_train_eval = DataLoader(dataset_ss_train_eval, config.ss_batch_size, False, num_workers=16)
         data_loader_ss_val = DataLoader(dataset_ss_val, config.ss_batch_size, False, num_workers=16)
+
+        if config.has_eval_ss:
+            Tools.print("Eval SS: {}".format(epoch))
+            ss_runner.eval_ss(data_loader=data_loader_ss_val, epoch=epoch)
+            Tools.print()
+            pass
 
         # 训练MIC
         if config.has_train_ss:
@@ -194,12 +203,6 @@ def train(config):
         if config.has_train_eval_ss:
             Tools.print("Train Eval SS: {}".format(epoch))
             ss_runner.train_eval_ss(data_loader=data_loader_ss_train_eval, epoch=epoch)
-            Tools.print()
-            pass
-
-        if config.has_eval_ss:
-            Tools.print("Eval SS: {}".format(epoch))
-            ss_runner.eval_ss(data_loader=data_loader_ss_val, epoch=epoch)
             Tools.print()
             pass
 
@@ -228,8 +231,8 @@ class Config(object):
 
         # 流程控制
         self.has_train_ss = True  # 是否训练SS
-        self.has_train_eval_ss = True  # 是否SS
         self.has_eval_ss = True  # 是否评估SS
+        self.has_train_eval_ss = False  # 是否SS
 
         self.sampling = False
 
@@ -237,7 +240,7 @@ class Config(object):
         self.ss_epoch_num = 10
         self.ss_milestones = [5, 7]
         self.ss_batch_size = 12 * (len(self.gpu_id.split(",")) - 1)
-        self.ss_lr = 0.0001
+        self.ss_lr = 0.001
 
         # 图像大小
         self.ss_size = 352
@@ -293,6 +296,12 @@ Overall Acc: 0.761370
 Mean Acc: 0.315599
 FreqW Acc: 0.605419
 Mean IoU: 0.220519
+
+../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_24_352/ss_0.pth
+Overall Acc: 0.643250
+Mean Acc: 0.362455
+FreqW Acc: 0.525894
+Mean IoU: 0.148717
 """
 
 
