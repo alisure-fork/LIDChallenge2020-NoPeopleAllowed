@@ -186,8 +186,12 @@ class MyNet(nn.Module):
             # 最小值Mask
             cam_mask_min_1 = torch.zeros_like(cam_1)
             cam_mask_min_2 = torch.zeros_like(cam_2)
-            cam_mask_min_1[cam_1 == F.adaptive_max_pool2d(-cam_1, (1, 1))] = 1.0
-            cam_mask_min_2[cam_2 == F.adaptive_max_pool2d(-cam_2, (1, 1))] = 1.0
+            # 最小的一个
+            # cam_mask_min_1[-cam_1 == F.adaptive_max_pool2d(-cam_1, (1, 1))] = 1.0
+            # cam_mask_min_2[-cam_2 == F.adaptive_max_pool2d(-cam_2, (1, 1))] = 1.0
+            # 小于0的
+            cam_mask_min_1[(cam_1 < 0.0) | (-cam_1 == F.adaptive_max_pool2d(-cam_1, (1, 1)))] = 1.0
+            cam_mask_min_2[(cam_2 < 0.0) | (-cam_2 == F.adaptive_max_pool2d(-cam_2, (1, 1)))] = 1.0
 
             # -------------Convert-------------
             e0_1, e1_1, e2_1, e3_1, e4_1 = self._convert_feature(feature=feature_1)
@@ -331,8 +335,9 @@ class MyNet(nn.Module):
     @staticmethod
     def _up_to_target(source, target, mode="bilinear"):
         if source.size()[2] != target.size()[2] or source.size()[3] != target.size()[3]:
+            align_corners = True if mode == "nearest" else False
             source = torch.nn.functional.interpolate(
-                source, size=[target.size()[2], target.size()[3]], mode=mode)
+                source, size=[target.size()[2], target.size()[3]], mode=mode, align_corners=align_corners)
             pass
         return source
 

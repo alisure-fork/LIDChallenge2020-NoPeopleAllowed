@@ -225,7 +225,7 @@ class Config(object):
             self.batch_size, self.save_epoch_freq, self.input_size, self.crop_size)
         Tools.print(self.model_name)
 
-        self.model_dir = "../../../WSS_Model_My/{}".format(self.model_name)
+        self.model_dir = "../../../WSS_Model_My/SS/{}".format(self.model_name)
         self.save_result_txt = Tools.new_dir("{}/result.txt".format(self.model_dir))
         pass
 
@@ -243,10 +243,10 @@ class Config(object):
 
 
 """
-../../../WSS_Model_My/1_CNet_20_50_24_5_256_224/35.pth
+../../../WSS_Model_My/SS/1_CNet_20_50_24_5_256_224/35.pth
 mae:0.1088 f1:0.7942 acc:0.7942
 
-../../../WSS_Model_My/1_CNet_20_50_24_5_256_224/45.pth
+../../../WSS_Model_My/SS/1_CNet_20_50_24_5_256_224/45.pth
 mae:0.1054 f1:0.8004 acc:0.8004
 """
 

@@ -42,6 +42,7 @@ class MyRunner(object):
         # Loss
         self.bce_with_logits_loss = nn.BCEWithLogitsLoss().cuda()
         self.bce_loss = nn.BCELoss().cuda()
+        self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').cuda()
 
         # Data
         self.dataset_train = DatasetUtil.get_dataset_by_type(
@@ -49,7 +50,7 @@ class MyRunner(object):
             data_root=self.config.data_root_path, sampling=self.config.sampling)
         self.dataset_val = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_voc_val, input_size=self.config.input_size, crop_size=self.config.crop_size,
-            data_root=self.config.data_root_path, sampling=self.config.sampling)
+            data_root=self.config.data_root_path, sampling=self.config.sampling, return_image_info=True)
         self.data_loader_train = DataLoader(self.dataset_train, self.config.batch_size,
                                             shuffle=True, num_workers=16, drop_last=True)
         self.data_loader_val = DataLoader(self.dataset_val, 1, shuffle=False, num_workers=16)
@@ -86,41 +87,68 @@ class MyRunner(object):
                 result = self.net(x1, x2, pair_labels, has_class=self.config.has_class,
                                   has_cam=self.config.has_cam, has_ss=self.config.has_ss)
 
+                # 分类损失
                 class_logits = result["class_logits"]
-                loss_class = self.bce_with_logits_loss(class_logits["x1"], label1) + \
-                             self.bce_with_logits_loss(class_logits["x2"], label2)
+                loss_class = 5 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
+                                  self.bce_with_logits_loss(class_logits["x2"], label2))
                 loss = loss_class
+                avg_meter.update("loss_class", loss_class.item())
 
                 if self.config.has_ss:
+                    # CAM最大值掩码
                     where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
                     value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][where_cam_mask_large_1]
                     where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
                     value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][where_cam_mask_large_2]
 
+                    # CAM最小值掩码
                     where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
                     value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][where_cam_mask_min_large_1]
                     where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
                     value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][where_cam_mask_min_large_2]
 
+                    # 特征相似度损失
                     loss_ss = self.bce_loss(value_cam_mask_large_1, torch.ones_like(value_cam_mask_large_1)) + \
                               self.bce_loss(value_cam_mask_large_2, torch.ones_like(value_cam_mask_large_2)) + \
                               self.bce_loss(value_cam_mask_min_large_1, torch.zeros_like(value_cam_mask_min_large_1)) + \
                               self.bce_loss(value_cam_mask_min_large_2, torch.zeros_like(value_cam_mask_min_large_2))
-                    avg_meter.update("loss_ss", loss_ss.item())
                     loss = loss + loss_ss
+
+                    # 输出的正标签
+                    mask_large_1 = torch.ones_like(where_cam_mask_large_1).long() * 255
+                    mask_large_2 = torch.ones_like(where_cam_mask_large_2).long() * 255
+                    now_pair_labels_1 = (pair_labels + 1).view(-1, 1, 1).expand_as(mask_large_1)
+                    now_pair_labels_2 = (pair_labels + 1).view(-1, 1, 1).expand_as(mask_large_2)
+                    mask_large_1[where_cam_mask_large_1] = now_pair_labels_1[where_cam_mask_large_1]
+                    mask_large_2[where_cam_mask_large_2] = now_pair_labels_2[where_cam_mask_large_2]
+
+                    # 输出的负标签
+                    mask_min_large_1 = torch.ones_like(where_cam_mask_min_large_1).long() * 255
+                    mask_min_large_2 = torch.ones_like(where_cam_mask_min_large_2).long() * 255
+                    mask_min_large_1[where_cam_mask_min_large_1] = 0
+                    mask_min_large_2[where_cam_mask_min_large_2] = 0
+
+                    # 预测损失
+                    loss_ce = self.ce_loss(result["ss"]["out_1"], mask_large_1) + \
+                              self.ce_loss(result["ss"]["out_2"], mask_large_1) + \
+                              self.ce_loss(result["ss"]["out_1"], mask_min_large_1) + \
+                              self.ce_loss(result["ss"]["out_2"], mask_min_large_2)
+                    loss = loss + loss_ce
+
+                    avg_meter.update("loss_ss", loss_ss.item())
+                    avg_meter.update("loss_ce", loss_ce.item())
                     pass
 
                 loss.backward()
                 self.optimizer.step()
-
                 avg_meter.update("loss", loss.item())
-                avg_meter.update("loss_class", loss_class.item())
                 pass
             ###########################################################################
 
-            Tools.print("[E:{:3d}/{:3d}] loss:{:.4f} class:{:.4f} ss:{:.4f}".format(
+            Tools.print("[E:{:3d}/{:3d}] loss:{:.4f} class:{:.4f} ss:{:.4f} ce:{:.4f}".format(
                 epoch, self.config.epoch_num, avg_meter.get_results("loss"), avg_meter.get_results("loss_class"),
-                avg_meter.get_results("loss_ss") if self.config.has_ss else 0.0),
+                avg_meter.get_results("loss_ss") if self.config.has_ss else 0.0,
+                avg_meter.get_results("loss_ce") if self.config.has_ss else 0.0),
                 txt_path=self.config.save_result_txt)
 
             ###########################################################################
@@ -153,7 +181,7 @@ class MyRunner(object):
         self.eval(epoch=self.config.epoch_num)
         pass
 
-    def eval(self, epoch=0, model_file_name=None):
+    def eval(self, epoch=0, model_file_name=None, result_path=None):
         if model_file_name is not None:
             Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.save_result_txt)
             self.load_model(model_file_name)
@@ -163,7 +191,8 @@ class MyRunner(object):
         ss_meter = StreamSegMetrics(self.config.num_classes + 1)
         self.net.eval()
         with torch.no_grad():
-            for i, (inputs, masks, labels) in tqdm(enumerate(self.data_loader_val), total=len(self.data_loader_val)):
+            for i, (inputs, masks, labels, image_info_list) in tqdm(
+                    enumerate(self.data_loader_val), total=len(self.data_loader_val)):
                 inputs = inputs.float().cuda()
                 masks, labels = masks.numpy(), labels.numpy()
 
@@ -174,6 +203,18 @@ class MyRunner(object):
                 if self.config.has_ss:
                     ss_out = result["ss"]["out_up"].detach().max(dim=1)[1].cpu().numpy()
                     ss_meter.update(masks, ss_out)
+
+                    if result_path is not None:
+                        for image_info_one, ss_out_one, mask_one in zip(image_info_list, ss_out, masks):
+                            result_file = Tools.new_dir(os.path.join(result_path, os.path.basename(image_info_one)))
+                            Image.open(image_info_one).save(result_file)
+                            DataUtil.gray_to_color(np.asarray(
+                                ss_out_one, dtype=np.uint8)).save(result_file.replace(".jpg", "_p.png"))
+                            DataUtil.gray_to_color(np.asarray(
+                                mask_one, dtype=np.uint8)).save(result_file.replace(".jpg", "_l.png"))
+                            pass
+                        pass
+
                     pass
 
                 # Class
@@ -225,12 +266,15 @@ class MyRunner(object):
 
 
 def train(config):
+
     my_runner = MyRunner(config=config)
 
-    # 训练MIC
-    if config.has_train:
+    if config.has_train and not config.only_eval:
         my_runner.train(start_epoch=0, model_file_name=None)
-        # my_runner.eval(epoch=0, model_file_name=os.path.join(config.model_dir, "5.pth"))
+        pass
+
+    if config.only_eval:
+        my_runner.eval(epoch=0, model_file_name=config.model_pth, result_path=config.model_eval_dir)
         pass
 
     pass
@@ -245,19 +289,25 @@ class Config(object):
         # 流程控制
         self.has_train = True  # 是否训练
         self.sampling = False
+        self.only_eval = False
+
+        self.model_pth = None
+        self.model_eval_dir = None
+        self.model_pth = "../../../WSS_Model_My/SS/2_MNet_20_15_24_1_256_224/8.pth"
+        self.model_eval_dir = "../../../WSS_Model_My/Eval/2_MNet_20_15_24_1_256_224"
 
         self.has_class = True
         self.has_cam = True
         self.has_ss = True
 
         self.num_classes = 20
-        self.epoch_num = 50
-        self.change_epoch = 30
-        self.batch_size = 4 * len(self.gpu_id.split(","))
+        self.epoch_num = 15
+        self.change_epoch = 10
+        self.batch_size = 8 * len(self.gpu_id.split(","))
         # self.batch_size = 16 * len(self.gpu_id.split(","))
         self.lr = 0.0001
-        self.save_epoch_freq = 5
-        self.eval_epoch_freq = 5
+        self.save_epoch_freq = 1
+        self.eval_epoch_freq = 1
 
         # 图像大小
         # self.input_size = 352
@@ -270,13 +320,13 @@ class Config(object):
 
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "1"
+        run_name = "3"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}".format(
             run_name, "MNet", self.num_classes, self.epoch_num,
             self.batch_size, self.save_epoch_freq, self.input_size, self.crop_size)
         Tools.print(self.model_name)
 
-        self.model_dir = "../../../WSS_Model_My_SS/{}".format(self.model_name)
+        self.model_dir = "../../../WSS_Model_My/SS/{}".format(self.model_name)
         self.save_result_txt = Tools.new_dir("{}/result.txt".format(self.model_dir))
         pass
 
@@ -294,8 +344,22 @@ class Config(object):
 
 
 """
-../../../WSS_Model_My_SS/1_MNet_20_50_48_5_256_224/5.pth
+../../../WSS_Model_My/SS/1_MNet_20_50_48_5_256_224/5.pth
 mae:0.0969 f1:0.8342 acc:0.8342
+
+../../../WSS_Model_My/SS/1_MNet_20_50_24_1_256_224/12.pth
+mae:0.1131 f1:0.8063 acc:0.8063
+Overall Acc: 0.598694
+Mean Acc: 0.556079
+FreqW Acc: 0.478520
+Mean IoU: 0.266939
+
+../../../WSS_Model_My/SS/2_MNet_20_15_24_1_256_224/8.pth
+mae:0.1093 f1:0.8187 acc:0.8187
+Overall Acc: 0.694466
+Mean Acc: 0.586936
+FreqW Acc: 0.571327
+Mean IoU: 0.321086
 """
 
 
