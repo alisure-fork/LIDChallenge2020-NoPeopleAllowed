@@ -35,8 +35,8 @@ class SSRunner(object):
                                                True, num_workers=16, drop_last=True)
         self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
                                              False, num_workers=16, drop_last=True)
-        self.data_loader_ss_inference_val = DataLoader(self.dataset_ss_inference_val, 1, False, num_workers=4)
-        self.data_loader_ss_inference_test = DataLoader(self.dataset_ss_inference_test, 1, False, num_workers=4)
+        self.data_loader_ss_inference_val = DataLoader(self.dataset_ss_inference_val, 1, False, num_workers=16)
+        self.data_loader_ss_inference_test = DataLoader(self.dataset_ss_inference_test, 1, False, num_workers=16)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
@@ -219,9 +219,9 @@ def train(config):
     ss_runner = SSRunner(config=config)
 
     if config.only_inference_ss:
-        ss_runner.inference_ss(model_file_name=config.model_file_name,
-                               data_loader=ss_runner.data_loader_ss_inference_val,
-                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        # ss_runner.inference_ss(model_file_name=config.model_file_name,
+        #                        data_loader=ss_runner.data_loader_ss_inference_val,
+        #                        save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
         ss_runner.inference_ss(model_file_name=config.model_file_name,
                                data_loader=ss_runner.data_loader_ss_inference_test,
                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))

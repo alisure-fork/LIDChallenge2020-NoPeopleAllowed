@@ -353,6 +353,7 @@ class DataUtil(object):
 
     @classmethod
     def get_ss_info(cls, data_root=None, split="train", train_label_dir=None):
+
         if split == "train":
             assert train_label_dir is not None
             if "sem_seg" in train_label_dir:
@@ -395,6 +396,7 @@ class DataUtil(object):
             val_label_path = sorted(glob(os.path.join(val_label_dir, "*.png")))
             return [{"image_path": image, "label_path": mask} for image, mask in
                     zip(val_image_path, val_label_path)]
+
         pass
 
     @staticmethod
@@ -741,8 +743,8 @@ class ImageNetSegmentation(Dataset):
                 return image, mask, image_path
             return image, mask
         else:
-            mask = Image.fromarray(np.zeros_like(np.asarray(image)))
-            image, _ = self.transform(image, mask)
+            mask = Image.fromarray(np.zeros_like(np.asarray(image))).convert("L")
+            image, mask = self.transform(image, mask)
             if self.return_image_info:
                 return image, mask, image_path
             return image, mask
