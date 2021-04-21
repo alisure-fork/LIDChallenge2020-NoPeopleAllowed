@@ -28,7 +28,7 @@ class SSRunner(object):
 
         # Data
         self.dataset_ss_train, _, self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss, self.config.ss_size,
+            DatasetUtil.dataset_type_ss, self.config.ss_size, is_balance=self.config.is_balance_data,
             data_root=self.config.data_root_path, train_label_path=self.config.label_path)
         self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
                                                True, num_workers=16, drop_last=True)
@@ -75,6 +75,9 @@ class SSRunner(object):
             # 1 训练模型
             all_loss = 0.0
             self.net.train()
+            if self.config.is_balance_data:
+                self.dataset_ss_train.reset()
+                pass
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_train),
                                             total=len(self.data_loader_ss_train)):
                 inputs, labels = inputs.float().cuda(), labels.long().cuda()
@@ -251,19 +254,21 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 3"
 
         # 流程控制
-        self.only_train_ss = False  # 是否训练SS
+        self.only_train_ss = True  # 是否训练SS
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = True  # 是否推理SS
+        self.only_inference_ss = False  # 是否推理SS
+
+        self.is_balance_data = True
 
         self.scales = (1.0, 0.5, 1.5)
         self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
         self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
@@ -286,9 +291,10 @@ class Config(object):
 
         self.data_root_path = self.get_data_root_path()
 
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
-            run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num,
-            self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
+        run_name = "5"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
+            run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
+            self.ss_save_epoch_freq, self.ss_size, "_balance" if self.is_balance_data else "")
         Tools.print(self.model_name)
 
         self.ss_model_dir = "../../../WSS_Model_SS/{}".format(self.model_name)
@@ -340,6 +346,11 @@ Overall Acc: 0.837372
 Mean Acc: 0.658561
 FreqW Acc: 0.745213
 Mean IoU: 0.459913
+
+Overall Acc: 0.843774
+Mean Acc: 0.621268
+FreqW Acc: 0.750521
+Mean IoU: 0.461591
 """
 
 

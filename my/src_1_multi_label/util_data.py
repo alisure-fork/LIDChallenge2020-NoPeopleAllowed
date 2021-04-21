@@ -821,6 +821,7 @@ class ImageNetSegmentationBalance(Dataset):
         for select_image in image_list:
             self.train_images_list += select_image
         np.random.shuffle(self.train_images_list)
+        Tools.print("Reset Sample: {}-{}".format(self.sample_num, len(self.train_images_list)))
         pass
 
     def __getitem__(self, idx):
@@ -876,7 +877,7 @@ class DatasetUtil(object):
     dataset_type_ss_voc_val_center = "ss_voc_val_center"
 
     @classmethod
-    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, scales=None,
+    def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, scales=None, is_balance=False,
                             return_image_info=False, sampling=False, train_label_path=None):
         ################################################################################################################
         if dataset_type == cls.dataset_type_person:
@@ -956,11 +957,11 @@ class DatasetUtil(object):
         elif dataset_type == cls.dataset_type_ss:
             data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_dir=train_label_path)
             data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[one_data["label_path"], one_data["image_path"], one_data["label"]] for one_data in data_info]
 
+            label_image_path = [[one_data["label_path"], one_data["image_path"], one_data["label"]] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
-            # seg = ImageNetSegmentationBalance(label_image_path, transform_train, return_image_info=return_image_info)
-            train = ImageNetSegmentation(label_image_path, transform_train, return_image_info=return_image_info)
+            train_class = ImageNetSegmentationBalance if is_balance else ImageNetSegmentation
+            train = train_class(label_image_path, transform_train, return_image_info=return_image_info)
 
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
             transform_test = MyTransform.transform_train_ss_2(image_size=image_size)
@@ -968,6 +969,7 @@ class DatasetUtil(object):
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
+
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
             val = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
