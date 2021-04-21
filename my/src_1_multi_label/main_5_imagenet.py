@@ -272,6 +272,15 @@ Mean IoU: 0.220519
 """
 
 
+"""
+../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth
+Overall Acc: 0.818186
+Mean Acc: 0.662312
+FreqW Acc: 0.715434
+Mean IoU: 0.470527
+"""
+
+
 if __name__ == '__main__':
     config = Config()
     train(config=config)
