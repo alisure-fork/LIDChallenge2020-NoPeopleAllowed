@@ -755,6 +755,39 @@ class ImageNetSegmentation(Dataset):
     pass
 
 
+class ImageNetSegmentationScales(Dataset):
+
+    def __init__(self, images_list, transform_list, return_image_info=False):
+        self.images_list = images_list
+        self.transform_list = transform_list
+        self.return_image_info = return_image_info
+        pass
+
+    def __len__(self):
+        return len(self.images_list)
+
+    def __getitem__(self, idx):
+        label_path, image_path, _ = self.images_list[idx]
+
+        image = DataUtil.read_image(image_path, is_rgb=True)
+
+        if label_path is not None:
+            mask = DataUtil.read_image(label_path, is_rgb=False)
+        else:
+            mask = Image.fromarray(np.zeros_like(np.asarray(image))).convert("L")
+            pass
+
+        image_mask_list = [transform(image, mask) for transform in self.transform_list]
+        image_list = [one[0] for one in image_mask_list]
+        mask_list = [one[1] for one in image_mask_list]
+
+        if self.return_image_info:
+            return image_list, mask_list, image_path
+        return image_list, mask_list
+
+    pass
+
+
 class ImageNetSegmentationBalance(Dataset):
 
     def __init__(self, images_list, transform, return_image_info=False, sample_num=None):
@@ -836,6 +869,7 @@ class DatasetUtil(object):
     dataset_type_mlc_no_person = "mlc_no_person"
     dataset_type_mlc = "mlc"
     dataset_type_ss = "ss"
+    dataset_type_ss_scale = "ss_scale"
 
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
@@ -923,55 +957,55 @@ class DatasetUtil(object):
             data_info = DataUtil.get_ss_info(data_root=data_root, split="train", train_label_dir=train_label_path)
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"], one_data["label"]] for one_data in data_info]
-            train =  cls._get_ss_train(label_image_path, image_size, return_image_info=return_image_info)
+
+            transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
+            # seg = ImageNetSegmentationBalance(label_image_path, transform_train, return_image_info=return_image_info)
+            train = ImageNetSegmentation(label_image_path, transform_train, return_image_info=return_image_info)
 
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
-            train_eval = cls._get_ss_train_eval(label_image_path, image_size, return_image_info=return_image_info)
+            transform_test = MyTransform.transform_train_ss_2(image_size=image_size)
+            train_eval = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
-            val = cls._get_ss_val(label_image_path, image_size, return_image_info=return_image_info)
+            transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
+            val = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
 
+            return train, train_eval, val
+        ################################################################################################################
+        elif dataset_type == cls.dataset_type_ss_scale:
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
-            inference_val = cls._get_ss_test(label_image_path, image_size, return_image_info=True)
+
+            #############################################
+            transform_test_list = []
+            if scales is None:
+                transform_test = MyTransform.transform_test_ss(image_size=image_size)
+                transform_test_list.append(transform_test)
+            else:
+                for scale in scales:
+                    transform_test = MyTransform.transform_test_ss(image_size=int(scale * image_size))
+                    transform_test_list.append(transform_test)
+                    pass
+                pass
+            #############################################
+
+            inference_scale_val = ImageNetSegmentationScales(
+                label_image_path, transform_list=transform_test_list, return_image_info=True)
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="test")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"], None] for one_data in data_info]
-            inference_test = cls._get_ss_test(label_image_path, image_size, return_image_info=True)
-            return train, train_eval, val, inference_val, inference_test
+
+            inference_scale_test = ImageNetSegmentationScales(
+                label_image_path, transform_list=transform_test_list, return_image_info=True)
+            return inference_scale_val, inference_scale_test
         ################################################################################################################
         else:
             raise Exception("....")
         pass
-
-    @staticmethod
-    def _get_ss_train(label_image_path, image_size, return_image_info):
-        transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
-        # seg = ImageNetSegmentationBalance(label_image_path, transform_train, return_image_info=return_image_info)
-        seg = ImageNetSegmentation(label_image_path, transform_train, return_image_info=return_image_info)
-        return seg
-
-    @staticmethod
-    def _get_ss_train_eval(label_image_path, image_size, return_image_info):
-        transform_test = MyTransform.transform_train_ss_2(image_size=image_size)
-        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
-        return seg
-
-    @staticmethod
-    def _get_ss_val(label_image_path, image_size, return_image_info):
-        transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
-        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
-        return seg
-
-    @staticmethod
-    def _get_ss_test(label_image_path, image_size, return_image_info):
-        transform_test = MyTransform.transform_test_ss(image_size=image_size)
-        seg = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
-        return seg
 
     @staticmethod
     def _get_voc_ss_train(label_image_path, image_size, return_image_info):

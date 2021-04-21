@@ -27,16 +27,13 @@ class SSRunner(object):
         self.config = config
 
         # Data
-        self.dataset_ss_train, _, self.dataset_ss_val, self.dataset_ss_inference_val, self.dataset_ss_inference_test = \
-            DatasetUtil.get_dataset_by_type(DatasetUtil.dataset_type_ss, self.config.ss_size,
-                                            data_root=self.config.data_root_path,
-                                            train_label_path=self.config.label_path)
+        self.dataset_ss_train, _, self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss, self.config.ss_size,
+            data_root=self.config.data_root_path, train_label_path=self.config.label_path)
         self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
                                                True, num_workers=16, drop_last=True)
         self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
                                              False, num_workers=16, drop_last=True)
-        self.data_loader_ss_inference_val = DataLoader(self.dataset_ss_inference_val, 1, False, num_workers=16)
-        self.data_loader_ss_inference_test = DataLoader(self.dataset_ss_inference_test, 1, False, num_workers=16)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
@@ -166,32 +163,40 @@ class SSRunner(object):
 
         final_save_path = Tools.new_dir("{}_final".format(save_path))
 
-        un_norm = MyTransform.transform_un_normalize()
         self.net.eval()
         metrics = StreamSegMetrics(self.config.ss_num_classes)
         with torch.no_grad():
             for i, (inputs, labels, image_info_list) in tqdm(enumerate(data_loader), total=len(data_loader)):
-                inputs = inputs.float().cuda()
-                labels = labels.long().cuda()
-                outputs = self.net(inputs)
-                preds = outputs.detach().max(dim=1)[1].cpu().numpy()
-                targets = labels.cpu().numpy()
+                assert len(image_info_list) == 1
 
+                # 标签
+                size = Image.open(image_info_list[0]).size
+                targets = F.interpolate(torch.unsqueeze(labels[0].float(), dim=0),
+                                        size=(size[1], size[0]), mode="nearest")
+                targets = targets[0].long().numpy()
+
+                # 预测
+                outputs = 0
+                for input_one in inputs:
+                    output_one = self.net(input_one.float().cuda())
+                    outputs += F.interpolate(output_one.detach().cpu(), size=(size[1], size[0]),
+                                             mode="bilinear", align_corners=False)
+                    pass
+                outputs = outputs / len(inputs)
+                preds = outputs.max(dim=1)[1].numpy()
+
+                # 计算
                 metrics.update(targets, preds)
 
                 if save_path:
-                    for j, (input_one, label_one, pred_one, image_path_one) in enumerate(
-                            zip(inputs, targets, preds, image_info_list)):
-                        size =Image.open(image_path_one).size
-                        basename = os.path.basename(image_path_one)
-                        un_norm(input_one.cpu()).resize(size).save(os.path.join(save_path, basename))
-                        DataUtil.gray_to_color(np.asarray(label_one, dtype=np.uint8)).resize(size).save(
-                            os.path.join(save_path, basename.replace(".JPEG", "_l.png")))
-                        DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).resize(size).save(
-                            os.path.join(save_path, basename.replace(".JPEG", ".png")))
-                        Image.fromarray(np.asarray(pred_one, dtype=np.uint8)).resize(size).save(
-                            os.path.join(final_save_path, basename.replace(".JPEG", ".png")))
-                        pass
+                    basename = os.path.basename(image_info_list[0])
+                    Image.open(image_info_list[0]).save(os.path.join(save_path, basename))
+                    DataUtil.gray_to_color(np.asarray(targets[0], dtype=np.uint8)).save(
+                        os.path.join(save_path, basename.replace(".JPEG", "_l.png")))
+                    DataUtil.gray_to_color(np.asarray(preds[0], dtype=np.uint8)).save(
+                        os.path.join(save_path, basename.replace(".JPEG", ".png")))
+                    Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(
+                        os.path.join(final_save_path, basename.replace(".JPEG", ".png")))
                     pass
                 pass
             pass
@@ -219,11 +224,15 @@ def train(config):
     ss_runner = SSRunner(config=config)
 
     if config.only_inference_ss:
-        # ss_runner.inference_ss(model_file_name=config.model_file_name,
-        #                        data_loader=ss_runner.data_loader_ss_inference_val,
-        #                        save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
-        ss_runner.inference_ss(model_file_name=config.model_file_name,
-                               data_loader=ss_runner.data_loader_ss_inference_test,
+        dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss_scale, config.ss_size, scales=config.scales,
+            data_root=config.data_root_path, train_label_path=config.label_path)
+        data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=16)
+        data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=16)
+
+        ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
         return
 
@@ -242,17 +251,19 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
 
         # 流程控制
         self.only_train_ss = False  # 是否训练SS
         self.only_eval_ss = False  # 是否评估SS
         self.only_inference_ss = True  # 是否推理SS
+
+        self.scales = (1.0, 0.5, 1.5)
         self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "4"
+        run_name = "5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
