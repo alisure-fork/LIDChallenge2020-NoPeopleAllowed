@@ -744,8 +744,8 @@ class ImageNetSegmentation(Dataset):
             mask = Image.fromarray(np.zeros_like(np.asarray(image)))
             image, _ = self.transform(image, mask)
             if self.return_image_info:
-                return image, image_path
-            return image
+                return image, mask, image_path
+            return image, mask
             pass
 
         pass
@@ -931,11 +931,16 @@ class DatasetUtil(object):
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
             val = cls._get_ss_val(label_image_path, image_size, return_image_info=return_image_info)
 
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
+            inference_val = cls._get_ss_test(label_image_path, image_size, return_image_info=True)
+
             data_info = DataUtil.get_ss_info(data_root=data_root, split="test")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"], None] for one_data in data_info]
-            test = cls._get_ss_test(label_image_path, image_size, return_image_info=return_image_info)
-            return train, train_eval, val, test
+            inference_test = cls._get_ss_test(label_image_path, image_size, return_image_info=True)
+            return train, train_eval, val, inference_val, inference_test
         ################################################################################################################
         else:
             raise Exception("....")

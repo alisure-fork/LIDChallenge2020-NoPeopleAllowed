@@ -15,6 +15,7 @@ import torch.backends.cudnn as cudnn
 from util_blance_gpu import BalancedDataParallel
 from torch.utils.data import DataLoader, Dataset
 from util_data import DataUtil, DatasetUtil, MyTransform
+from torch.nn.parallel.data_parallel import DataParallel
 sys.path.append("../../")
 from util_network import DeepLabV3Plus
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
@@ -26,18 +27,25 @@ class SSRunner(object):
         self.config = config
 
         # Data
-        self.dataset_ss_train, _, self.dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss, self.config.ss_size,
-            data_root=self.config.data_root_path, train_label_path=self.config.label_path)
+        self.dataset_ss_train, _, self.dataset_ss_val, self.dataset_ss_inference_val, self.dataset_ss_inference_test = \
+            DatasetUtil.get_dataset_by_type(DatasetUtil.dataset_type_ss, self.config.ss_size,
+                                            data_root=self.config.data_root_path,
+                                            train_label_path=self.config.label_path)
         self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
                                                True, num_workers=16, drop_last=True)
         self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
                                              False, num_workers=16, drop_last=True)
+        self.data_loader_ss_inference_val = DataLoader(self.dataset_ss_inference_val, 1, False, num_workers=4)
+        self.data_loader_ss_inference_test = DataLoader(self.dataset_ss_inference_test, 1, False, num_workers=4)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
 
-        self.net = BalancedDataParallel(0, self.net, dim=0).cuda()
+        if self.config.only_train_ss:
+            self.net = BalancedDataParallel(0, self.net, dim=0).cuda()
+        else:
+            self.net = DataParallel(self.net).cuda()
+            pass
         cudnn.benchmark = True
 
         # Optimize
@@ -126,13 +134,12 @@ class SSRunner(object):
         self.eval_ss(epoch=self.config.ss_epoch_num)
         pass
 
-    def eval_ss(self, epoch=0, model_file_name=None, save_path=None):
+    def eval_ss(self, epoch=0, model_file_name=None):
         if model_file_name is not None:
             Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
             self.load_model(model_file_name)
             pass
 
-        un_norm = MyTransform.transform_un_normalize()
         self.net.eval()
         metrics = StreamSegMetrics(self.config.ss_num_classes)
         with torch.no_grad():
@@ -144,21 +151,53 @@ class SSRunner(object):
                 targets = labels.cpu().numpy()
 
                 metrics.update(targets, preds)
+                pass
+            pass
+
+        score = metrics.get_results()
+        Tools.print("{} {}".format(epoch, metrics.to_str(score)), txt_path=self.config.ss_save_result_txt)
+        return score
+
+    def inference_ss(self, model_file_name=None, data_loader=None, save_path=None):
+        if model_file_name is not None:
+            Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
+            self.load_model(model_file_name)
+            pass
+
+        final_save_path = Tools.new_dir("{}_final".format(save_path))
+
+        un_norm = MyTransform.transform_un_normalize()
+        self.net.eval()
+        metrics = StreamSegMetrics(self.config.ss_num_classes)
+        with torch.no_grad():
+            for i, (inputs, labels, image_info_list) in tqdm(enumerate(data_loader), total=len(data_loader)):
+                inputs = inputs.float().cuda()
+                labels = labels.long().cuda()
+                outputs = self.net(inputs)
+                preds = outputs.detach().max(dim=1)[1].cpu().numpy()
+                targets = labels.cpu().numpy()
+
+                metrics.update(targets, preds)
 
                 if save_path:
-                    for j, (input_one, label_one, pred_one) in enumerate(zip(inputs, targets, preds)):
-                        un_norm(input_one.cpu()).save(os.path.join(save_path, "{}_{}.JPEG".format(i, j)))
-                        DataUtil.gray_to_color(np.asarray(label_one, dtype=np.uint8)).save(
-                            os.path.join(save_path, "{}_{}_l.png".format(i, j)))
-                        DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).save(
-                            os.path.join(save_path, "{}_{}_p.png".format(i, j)))
+                    for j, (input_one, label_one, pred_one, image_path_one) in enumerate(
+                            zip(inputs, targets, preds, image_info_list)):
+                        size =Image.open(image_path_one).size
+                        basename = os.path.basename(image_path_one)
+                        un_norm(input_one.cpu()).resize(size).save(os.path.join(save_path, basename))
+                        DataUtil.gray_to_color(np.asarray(label_one, dtype=np.uint8)).resize(size).save(
+                            os.path.join(save_path, basename.replace(".JPEG", "_l.png")))
+                        DataUtil.gray_to_color(np.asarray(pred_one, dtype=np.uint8)).resize(size).save(
+                            os.path.join(save_path, basename.replace(".JPEG", ".png")))
+                        Image.fromarray(np.asarray(pred_one, dtype=np.uint8)).resize(size).save(
+                            os.path.join(final_save_path, basename.replace(".JPEG", ".png")))
                         pass
                     pass
                 pass
             pass
 
         score = metrics.get_results()
-        Tools.print("{} {}".format(epoch, metrics.to_str(score)), txt_path=self.config.ss_save_result_txt)
+        Tools.print("{}".format(metrics.to_str(score)), txt_path=self.config.ss_save_result_txt)
         return score
 
     def load_model(self, model_file_name):
@@ -179,16 +218,23 @@ class SSRunner(object):
 def train(config):
     ss_runner = SSRunner(config=config)
 
-    # 训练MIC
-    if config.has_train_ss:
-        ss_runner.train_ss(start_epoch=0, model_file_name=None)
-        pass
+    if config.only_inference_ss:
+        ss_runner.inference_ss(model_file_name=config.model_file_name,
+                               data_loader=ss_runner.data_loader_ss_inference_val,
+                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        ss_runner.inference_ss(model_file_name=config.model_file_name,
+                               data_loader=ss_runner.data_loader_ss_inference_test,
+                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+        return
 
-    if config.has_eval_ss:
-        epoch = 0
-        ss_runner.eval_ss(epoch=epoch, model_file_name=os.path.join(config.ss_model_dir, "ss_{}.pth".format(epoch)),
-                          save_path=Tools.new_dir(os.path.join(config.ss_save_dir, str(epoch))))
-        pass
+    if config.only_eval_ss:
+        ss_runner.eval_ss(epoch=0, model_file_name=config.model_file_name)
+        return
+
+    # 训练MIC
+    if config.only_train_ss:
+        ss_runner.train_ss(start_epoch=0, model_file_name=None)
+        return
 
     pass
 
@@ -196,20 +242,26 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "0, 1, 2, 3"
-        # self.gpu_id = "0"
-        # self.gpu_id = "0, 1"
-        # self.gpu_id = "1, 2, 3"
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
+        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
 
         # 流程控制
-        self.has_train_ss = True  # 是否训练SS
-        self.has_eval_ss = False  # 是否评估SS
+        self.only_train_ss = False  # 是否训练SS
+        self.only_eval_ss = False  # 是否评估SS
+        self.only_inference_ss = True  # 是否推理SS
+        self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10"
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
+
+        run_name = "4"
+        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
+        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
+        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
+        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
 
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
         self.ss_milestones = [5, 7]
-        self.ss_batch_size = 6 * (len(self.gpu_id.split(",")) - 1)
+        self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
         self.ss_eval_epoch_freq = 1
@@ -222,19 +274,13 @@ class Config(object):
         self.Net = DeepLabV3Plus
 
         self.data_root_path = self.get_data_root_path()
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
-        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
 
-        run_name = "4"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num,
             self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
         Tools.print(self.model_name)
 
         self.ss_model_dir = "../../../WSS_Model_SS/{}".format(self.model_name)
-        self.ss_save_dir = "../../../WSS_Model_SS_EVAL/{}".format(self.model_name)
         self.ss_save_result_txt = Tools.new_dir("{}/result.txt".format(self.ss_model_dir))
         pass
 
@@ -278,6 +324,11 @@ Overall Acc: 0.818186
 Mean Acc: 0.662312
 FreqW Acc: 0.715434
 Mean IoU: 0.470527
+
+Overall Acc: 0.837372
+Mean Acc: 0.658561
+FreqW Acc: 0.745213
+Mean IoU: 0.459913
 """
 
 

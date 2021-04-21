@@ -180,7 +180,7 @@ def train(config):
     for epoch in range(0, config.ss_epoch_num):
 
         train_label_path = config.ss_train_eval_save_dir if epoch > 0 and config.has_train_eval_ss else config.label_path
-        dataset_ss_train, dataset_ss_train_eval, dataset_ss_val, _ = DatasetUtil.get_dataset_by_type(
+        dataset_ss_train, dataset_ss_train_eval, dataset_ss_val, _, _ = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss, config.ss_size, data_root=config.data_root_path,
             train_label_path=train_label_path, return_image_info=True, sampling=config.sampling)
         data_loader_ss_train = DataLoader(dataset_ss_train, config.ss_batch_size, True, num_workers=16)
