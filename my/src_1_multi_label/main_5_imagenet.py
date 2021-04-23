@@ -267,8 +267,8 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
         self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
 
         # 流程控制
         self.only_train_ss = False  # 是否训练SS
@@ -282,9 +282,19 @@ class Config(object):
         # self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
 
         # 平衡数据训练
-        self.scales = (1.0, 0.5, 1.5)
+        # self.scales = (1.0, 0.5, 1.5)
+        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales"
+
+        # 平衡数据训练
+        # self.scales = (1.0, 0.5, 1.5, 2.0)
+        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales_4"
+
+        # 平衡数据训练
+        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
         self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales_7"
 
         # 其他方法生成的伪标签
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
@@ -383,10 +393,15 @@ Mean Acc: 0.685476
 FreqW Acc: 0.720114
 Mean IoU: 0.473003
 
-Overall Acc: 0.848850
+Overall Acc: 0.848850  # 3 scales (1.0, 0.5, 1.5)
 Mean Acc: 0.643933
 FreqW Acc: 0.758975
 Mean IoU: 0.465997
+
+Overall Acc: 0.855283  # 4 scales (1.0, 0.5, 1.5, 2.0)
+Mean Acc: 0.650679
+FreqW Acc: 0.766168
+Mean IoU: 0.473421
 """
 
 
