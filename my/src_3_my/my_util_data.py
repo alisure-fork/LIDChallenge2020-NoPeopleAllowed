@@ -349,14 +349,12 @@ class MyTransform(object):
         return vision_transforms.Compose([UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
     @classmethod
-    def transform_train_class(cls, input_size, crop_size=448):
-        transform_train = ExtCompose([ExtResize(size=input_size),
+    def transform_train_class(cls, input_size=224):
+        transform_train = ExtCompose([ExtResize(size=(input_size, input_size)),
                                       ExtRandomHorizontalFlip(),
-                                      ExtColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-                                      ExtRandomCrop(crop_size),
                                       ExtToTensor(),
                                       ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-        transform_test = ExtCompose([ExtResize(size=crop_size),
+        transform_test = ExtCompose([ExtResize(size=(input_size, input_size)),
                                      ExtToTensor(),
                                      ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         return transform_train, transform_test
@@ -466,8 +464,7 @@ class DatasetUtil(object):
     dataset_type_voc_train_dual = "ss_voc_train_dual"
 
     @classmethod
-    def get_dataset_by_type(cls, dataset_type, input_size, crop_size,
-                            data_root=None, return_image_info=False, sampling=False):
+    def get_dataset_by_type(cls, dataset_type, input_size, data_root=None, return_image_info=False, sampling=False):
         ################################################################################################################
         if dataset_type == cls.dataset_type_voc_train:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
@@ -475,7 +472,7 @@ class DatasetUtil(object):
 
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
 
-            transform_train, _ = MyTransform.transform_train_class(input_size=input_size, crop_size=crop_size)
+            transform_train, _ = MyTransform.transform_train_class(input_size=input_size)
             return VOCSegmentation(label_image_path, transform=transform_train, return_image_info=return_image_info)
         elif dataset_type == cls.dataset_type_voc_train_dual:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
@@ -483,7 +480,7 @@ class DatasetUtil(object):
 
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
 
-            transform_train, _ = MyTransform.transform_train_class(input_size=input_size, crop_size=crop_size)
+            transform_train, _ = MyTransform.transform_train_class(input_size=input_size)
             return VOCSegmentationDual(label_image_path, transform=transform_train, return_image_info=return_image_info)
         elif dataset_type == cls.dataset_type_voc_val:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
@@ -491,7 +488,7 @@ class DatasetUtil(object):
 
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
 
-            _, transform_test = MyTransform.transform_train_class(input_size=input_size, crop_size=crop_size)
+            _, transform_test = MyTransform.transform_train_class(input_size=input_size)
             return VOCSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
         ################################################################################################################
         else:
@@ -502,14 +499,12 @@ class DatasetUtil(object):
 
 
 if __name__ == '__main__':
-    # dataset_train = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_voc_train,
-    #                                                 input_size=500, crop_size=448)
-    # dataset_val = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_voc_val,
-    #                                               input_size=500, crop_size=448)
+    # dataset_train = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_voc_train, input_size=500)
+    # dataset_val = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_voc_val, input_size=500)
     # dataset_train.__getitem__(0)
 
     data_root = '/mnt/4T/Data/data/SS/voc'
     dataset_train = DatasetUtil.get_dataset_by_type(dataset_type=DatasetUtil.dataset_type_voc_train_dual,
-                                                    data_root=data_root, input_size=500, crop_size=448)
+                                                    data_root=data_root, input_size=500)
     dataset_train.__getitem__(0)
     pass

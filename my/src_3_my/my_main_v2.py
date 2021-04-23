@@ -16,7 +16,7 @@ import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, Dataset
 sys.path.append("../../")
 from my_util_network import MyNet
-from my_util_data import DatasetUtil, DataUtil
+from my_util_data import DatasetUtil, DataUtil, MyTransform
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics, AverageMeter
 
 
@@ -31,12 +31,6 @@ class MyRunner(object):
         cudnn.benchmark = True
 
         # 不同层设置不同的学习率
-        # backbone = list(map(id, self.net.module.backbone.parameters()))
-        # base_params = filter(lambda p: id(p) not in backbone, self.net.module.parameters())
-        # self.optimizer = optim.Adam([
-        #     {'params': base_params},
-        #     {'params': self.net.module.backbone.parameters(), 'lr': self.config.lr * 10}],
-        #     lr=self.config.lr, betas=(0.9, 0.999), weight_decay=0)
         self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.lr, betas=(0.9, 0.999), weight_decay=0)
 
         # Loss
@@ -46,10 +40,10 @@ class MyRunner(object):
 
         # Data
         self.dataset_train = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_voc_train_dual, input_size=self.config.input_size, crop_size=self.config.crop_size,
+            DatasetUtil.dataset_type_voc_train_dual, input_size=self.config.input_size,
             data_root=self.config.data_root_path, sampling=self.config.sampling)
         self.dataset_val = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_voc_val, input_size=self.config.input_size, crop_size=self.config.crop_size,
+            DatasetUtil.dataset_type_voc_val, input_size=self.config.input_size,
             data_root=self.config.data_root_path, sampling=self.config.sampling, return_image_info=True)
         self.data_loader_train = DataLoader(self.dataset_train, self.config.batch_size,
                                             shuffle=True, num_workers=16, drop_last=True)
@@ -84,58 +78,70 @@ class MyRunner(object):
                 label1, label2 = labels[0].cuda(), labels[1].cuda()
                 self.optimizer.zero_grad()
 
-                result = self.net(x1, x2, pair_labels, has_class=self.config.has_class,
+                result = self.net(x1, x2, pair_labels, label1, label2, has_class=self.config.has_class,
                                   has_cam=self.config.has_cam, has_ss=self.config.has_ss)
 
                 # 分类损失
                 class_logits = result["class_logits"]
-                loss_class = 5 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
-                                  self.bce_with_logits_loss(class_logits["x2"], label2))
+                loss_class = 30 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
+                                   self.bce_with_logits_loss(class_logits["x2"], label2))
                 loss = loss_class
                 avg_meter.update("loss_class", loss_class.item())
 
                 if self.config.has_ss:
+                    ####################################################################################################
                     # CAM最大值掩码
-                    where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
-                    value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][where_cam_mask_large_1]
-                    where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
-                    value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][where_cam_mask_large_2]
+                    ss_where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
+                    ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]
+                    ss_where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
+                    ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]
 
                     # CAM最小值掩码
-                    where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
-                    value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][where_cam_mask_min_large_1]
-                    where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
-                    value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][where_cam_mask_min_large_2]
-
-                    # 特征相似度损失
-                    loss_ss = self.bce_loss(value_cam_mask_large_1, torch.ones_like(value_cam_mask_large_1)) + \
-                              self.bce_loss(value_cam_mask_large_2, torch.ones_like(value_cam_mask_large_2)) + \
-                              self.bce_loss(value_cam_mask_min_large_1, torch.zeros_like(value_cam_mask_min_large_1)) + \
-                              self.bce_loss(value_cam_mask_min_large_2, torch.zeros_like(value_cam_mask_min_large_2))
-                    loss = loss + loss_ss
+                    ss_where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
+                    ss_value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]
+                    ss_where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
+                    ss_value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]
 
                     # 输出的正标签
-                    mask_large_1 = torch.ones_like(where_cam_mask_large_1).long() * 255
-                    mask_large_2 = torch.ones_like(where_cam_mask_large_2).long() * 255
-                    now_pair_labels_1 = (pair_labels + 1).view(-1, 1, 1).expand_as(mask_large_1)
-                    now_pair_labels_2 = (pair_labels + 1).view(-1, 1, 1).expand_as(mask_large_2)
-                    mask_large_1[where_cam_mask_large_1] = now_pair_labels_1[where_cam_mask_large_1]
-                    mask_large_2[where_cam_mask_large_2] = now_pair_labels_2[where_cam_mask_large_2]
+                    ce_where_cam_mask_large_1 = ss_where_cam_mask_large_1
+                    ce_mask_large_1 = torch.ones_like(ce_where_cam_mask_large_1).long() * 255
+                    now_pair_labels_1 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_1)
+                    ce_mask_large_1[ce_where_cam_mask_large_1] = now_pair_labels_1[ce_where_cam_mask_large_1]
+                    ce_where_cam_mask_large_2 = ss_where_cam_mask_large_2
+                    ce_mask_large_2 = torch.ones_like(ce_where_cam_mask_large_2).long() * 255
+                    now_pair_labels_2 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_2)
+                    ce_mask_large_2[ce_where_cam_mask_large_2] = now_pair_labels_2[ce_where_cam_mask_large_2]
 
                     # 输出的负标签
-                    mask_min_large_1 = torch.ones_like(where_cam_mask_min_large_1).long() * 255
-                    mask_min_large_2 = torch.ones_like(where_cam_mask_min_large_2).long() * 255
-                    mask_min_large_1[where_cam_mask_min_large_1] = 0
-                    mask_min_large_2[where_cam_mask_min_large_2] = 0
+                    ce_where_cam_mask_min_large_1 = ss_where_cam_mask_min_large_1
+                    ce_mask_min_large_1 = torch.ones_like(ce_where_cam_mask_min_large_1).long() * 255
+                    ce_mask_min_large_1[ce_where_cam_mask_min_large_1] = 0
+                    ce_where_cam_mask_min_large_2 = ss_where_cam_mask_min_large_2
+                    ce_mask_min_large_2 = torch.ones_like(ce_where_cam_mask_min_large_2).long() * 255
+                    ce_mask_min_large_2[ce_where_cam_mask_min_large_2] = 0
+                    ####################################################################################################
+
+                    # 特征相似度损失
+                    loss_ss = 0
+                    if len(ss_value_cam_mask_large_1) > 0:
+                        loss_ss = self.bce_loss(ss_value_cam_mask_large_1, torch.ones_like(ss_value_cam_mask_large_1))
+                    if len(ss_value_cam_mask_large_2) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_large_2, torch.ones_like(ss_value_cam_mask_large_2))
+                    if len(ss_value_cam_mask_min_large_1) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_1, torch.zeros_like(ss_value_cam_mask_min_large_1))
+                    if len(ss_value_cam_mask_min_large_2) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_2, torch.zeros_like(ss_value_cam_mask_min_large_2))
+                    if loss_ss > 0:
+                        loss = loss + loss_ss
+                        avg_meter.update("loss_ss", loss_ss.item())
+                        pass
 
                     # 预测损失
-                    loss_ce = self.ce_loss(result["ss"]["out_1"], mask_large_1) + \
-                              self.ce_loss(result["ss"]["out_2"], mask_large_1) + \
-                              self.ce_loss(result["ss"]["out_1"], mask_min_large_1) + \
-                              self.ce_loss(result["ss"]["out_2"], mask_min_large_2)
+                    loss_ce = self.ce_loss(result["ss"]["out_1"], ce_mask_large_1) + \
+                              self.ce_loss(result["ss"]["out_2"], ce_mask_large_1) + \
+                              self.ce_loss(result["ss"]["out_1"], ce_mask_min_large_1) + \
+                              self.ce_loss(result["ss"]["out_2"], ce_mask_min_large_2)
                     loss = loss + loss_ce
-
-                    avg_meter.update("loss_ss", loss_ss.item())
                     avg_meter.update("loss_ce", loss_ce.item())
                     pass
 
@@ -179,6 +185,125 @@ class MyRunner(object):
         Tools.print()
 
         self.eval(epoch=self.config.epoch_num)
+        pass
+
+    def train_debug(self, model_file_name=None):
+
+        if model_file_name is not None:
+            Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.save_result_txt)
+            self.load_model(model_file_name)
+            pass
+
+        ###########################################################################
+        # 1 Debug模型
+        self.net.train()
+        for i, (pair_labels, inputs, masks, labels) in tqdm(
+                enumerate(self.data_loader_train), total=len(self.data_loader_train)):
+            pair_labels = pair_labels.long().cuda()
+            x1, x2 = inputs[0].float().cuda(), inputs[1].float().cuda()
+            # mask1, mask2 = masks[0].cuda(), masks[1].cuda()
+            label1, label2 = labels[0].cuda(), labels[1].cuda()
+            self.optimizer.zero_grad()
+
+            result = self.net(x1, x2, pair_labels, label1, label2, has_class=self.config.has_class,
+                              has_cam=self.config.has_cam, has_ss=self.config.has_ss)
+
+            # 分类损失
+            class_logits = result["class_logits"]
+
+            if self.config.has_ss:
+                # CAM最大值掩码
+                ss_where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
+                ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]
+                ss_where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
+                ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]
+
+                # CAM最小值掩码
+                ss_where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
+                ss_value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]
+                ss_where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
+                ss_value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]
+
+                # 输出的正标签
+                ce_where_cam_mask_large_1 = ss_where_cam_mask_large_1
+                ce_mask_large_1 = torch.ones_like(ce_where_cam_mask_large_1).long() * 255
+                now_pair_labels_1 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_1)
+                ce_mask_large_1[ce_where_cam_mask_large_1] = now_pair_labels_1[ce_where_cam_mask_large_1]
+                ce_where_cam_mask_large_2 = ss_where_cam_mask_large_2
+                ce_mask_large_2 = torch.ones_like(ce_where_cam_mask_large_2).long() * 255
+                now_pair_labels_2 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_2)
+                ce_mask_large_2[ce_where_cam_mask_large_2] = now_pair_labels_2[ce_where_cam_mask_large_2]
+
+                # 输出的负标签
+                ce_where_cam_mask_min_large_1 = ss_where_cam_mask_min_large_1
+                ce_mask_min_large_1 = torch.ones_like(ce_where_cam_mask_min_large_1).long() * 255
+                ce_mask_min_large_1[ce_where_cam_mask_min_large_1] = 0
+                ce_where_cam_mask_min_large_2 = ss_where_cam_mask_min_large_2
+                ce_mask_min_large_2 = torch.ones_like(ce_where_cam_mask_min_large_2).long() * 255
+                ce_mask_min_large_2[ce_where_cam_mask_min_large_2] = 0
+                pass
+            pass
+        ###########################################################################
+        pass
+
+    @staticmethod
+    def vis():
+        i = 0
+        MyTransform.transform_un_normalize()(x1[i].detach().cpu()).save("1.jpg")
+        MyTransform.transform_un_normalize()(x2[i].detach().cpu()).save("2.jpg")
+
+        cam_norm_large_1 = result["cam"]["cam_norm_large_1"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_norm_large_1 * 255, dtype=np.uint8)).save("1.png")
+        cam_norm_large_2 = result["cam"]["cam_norm_large_2"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_norm_large_2 * 255, dtype=np.uint8)).save("2.png")
+
+        neg_cam_norm_large_1 = result["cam"]["neg_cam_norm_large_1"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(neg_cam_norm_large_1 * 255, dtype=np.uint8)).save("1_neg.png")
+        neg_cam_norm_large_2 = result["cam"]["neg_cam_norm_large_2"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(neg_cam_norm_large_2 * 255, dtype=np.uint8)).save("2_neg.png")
+
+        cam_mask_large_1 = result["our"]["cam_mask_large_1"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_mask_large_1 * 255, dtype=np.uint8)).save("1_mask.png")
+        cam_mask_large_2 = result["our"]["cam_mask_large_2"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_mask_large_2 * 255, dtype=np.uint8)).save("2_mask.png")
+
+        cam_mask_min_large_1 = result["our"]["cam_mask_min_large_1"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_mask_min_large_1 * 255, dtype=np.uint8)).save("1_mask_neg.png")
+        cam_mask_min_large_2 = result["our"]["cam_mask_min_large_2"][i][0].detach().cpu().numpy()
+        Image.fromarray(np.asarray(cam_mask_min_large_2 * 255, dtype=np.uint8)).save("2_mask_neg.png")
+
+        d5_mask_2_to_1 = result["our"]["d5_mask_2_to_1"][i].detach().cpu().numpy()
+        Image.fromarray(np.asarray(d5_mask_2_to_1 * 255, dtype=np.uint8)).save("1_to.png")
+        d5_mask_1_to_2 = result["our"]["d5_mask_1_to_2"][i].detach().cpu().numpy()
+        Image.fromarray(np.asarray(d5_mask_1_to_2 * 255, dtype=np.uint8)).save("2_to.png")
+
+        d5_mask_neg_2_to_1 = result["our"]["d5_mask_neg_2_to_1"][i].detach().cpu().numpy()
+        Image.fromarray(np.asarray(d5_mask_neg_2_to_1 * 255, dtype=np.uint8)).save("1_to_neg.png")
+        d5_mask_neg_1_to_2 = result["our"]["d5_mask_neg_1_to_2"][i].detach().cpu().numpy()
+        Image.fromarray(np.asarray(d5_mask_neg_1_to_2 * 255, dtype=np.uint8)).save("2_to_neg.png")
+
+        out_up_1 = result["ss"]["out_up_1"][i].detach().max(dim=0)[1].cpu().numpy()
+        DataUtil.gray_to_color(np.asarray(out_up_1, dtype=np.uint8)).save("1_out.png")
+        out_up_2 = result["ss"]["out_up_2"][i].detach().max(dim=0)[1].cpu().numpy()
+        DataUtil.gray_to_color(np.asarray(out_up_2, dtype=np.uint8)).save("2_out.png")
+
+        ss_1 = np.asarray(ss_where_cam_mask_large_1[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ss_1 * 255, dtype=np.uint8)).save("1_ss_mask.png")
+        ss_2 = np.asarray(ss_where_cam_mask_large_2[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ss_2 * 255, dtype=np.uint8)).save("2_ss_mask.png")
+        ss_min_1 = np.asarray(ss_where_cam_mask_min_large_1[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ss_min_1 * 255, dtype=np.uint8)).save("1_ss_mask_neg.png")
+        ss_min_2 = np.asarray(ss_where_cam_mask_min_large_2[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ss_min_2 * 255, dtype=np.uint8)).save("2_ss_mask_neg.png")
+
+        ce_1 = np.asarray(ce_where_cam_mask_large_1[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ce_1 * 255, dtype=np.uint8)).save("1_ce_mask.png")
+        ce_2 = np.asarray(ce_where_cam_mask_large_2[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ce_2 * 255, dtype=np.uint8)).save("2_ce_mask.png")
+        ce_min_1 = np.asarray(ce_where_cam_mask_min_large_1[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ce_min_1 * 255, dtype=np.uint8)).save("1_ce_mask_neg.png")
+        ce_min_2 = np.asarray(ce_where_cam_mask_min_large_2[i].detach().cpu().numpy(), dtype=np.int)
+        Image.fromarray(np.asarray(ce_min_2 * 255, dtype=np.uint8)).save("2_ce_mask_neg.png")
         pass
 
     def eval(self, epoch=0, model_file_name=None, result_path=None):
@@ -269,13 +394,17 @@ def train(config):
 
     my_runner = MyRunner(config=config)
 
-    if config.has_train and not config.only_eval:
-        my_runner.train(start_epoch=0, model_file_name=None)
-        pass
+    if config.only_train_debug:
+        my_runner.train_debug(model_file_name=config.model_resume_pth)
+        return
 
     if config.only_eval:
         my_runner.eval(epoch=0, model_file_name=config.model_pth, result_path=config.model_eval_dir)
-        pass
+        return
+
+    if config.only_train:
+        my_runner.train(start_epoch=0, model_file_name=None)
+        return
 
     pass
 
@@ -287,43 +416,44 @@ class Config(object):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
-        self.has_train = True  # 是否训练
+        self.only_train = True  # 是否训练
         self.sampling = False
-        self.only_eval = False
 
+        # Eval
+        self.only_eval = False
         self.model_pth = None
         self.model_eval_dir = None
-        self.model_pth = "../../../WSS_Model_My/SS/2_MNet_20_15_24_1_256_224/8.pth"
-        self.model_eval_dir = "../../../WSS_Model_My/Eval/2_MNet_20_15_24_1_256_224"
+        self.model_pth = "../../../WSS_Model_My/SS/5_MNet_20_15_24_1_256_224/2.pth"
+        self.model_eval_dir = "../../../WSS_Model_My/Eval/5_MNet_20_15_24_1_256_224"
+
+        # Debug
+        self.only_train_debug = False
+        self.model_resume_pth = "../../../WSS_Model_My/SS/5_MNet_20_15_24_1_256_224/final_15.pth"
 
         self.has_class = True
         self.has_cam = True
         self.has_ss = True
 
         self.num_classes = 20
+        self.lr = 0.0001
         self.epoch_num = 15
         self.change_epoch = 10
-        self.batch_size = 8 * len(self.gpu_id.split(","))
-        # self.batch_size = 16 * len(self.gpu_id.split(","))
-        self.lr = 0.0001
         self.save_epoch_freq = 1
         self.eval_epoch_freq = 1
+        self.batch_size = 8 * len(self.gpu_id.split(","))
 
         # 图像大小
         # self.input_size = 352
-        # self.crop_size = 320
-        self.input_size = 256
-        self.crop_size = 224
+        self.input_size = 224
 
         # 网络
         self.Net = MyNet
-
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "3"
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}".format(
+        run_name = "5"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, "MNet", self.num_classes, self.epoch_num,
-            self.batch_size, self.save_epoch_freq, self.input_size, self.crop_size)
+            self.batch_size, self.save_epoch_freq, self.input_size)
         Tools.print(self.model_name)
 
         self.model_dir = "../../../WSS_Model_My/SS/{}".format(self.model_name)
@@ -360,6 +490,20 @@ Overall Acc: 0.694466
 Mean Acc: 0.586936
 FreqW Acc: 0.571327
 Mean IoU: 0.321086
+
+../../../WSS_Model_My/SS/3_MNet_20_15_24_1_256_224/7.pth  # no loss ss
+mae:0.1032 f1:0.8184 acc:0.8184
+Overall Acc: 0.698969
+Mean Acc: 0.588587
+FreqW Acc: 0.575668
+Mean IoU: 0.324335
+
+../../../WSS_Model_My/SS/5_MNet_20_15_24_1_256_224/final_15.pth
+mae:0.1023 f1:0.8313 acc:0.8313
+Overall Acc: 0.616045
+Mean Acc: 0.668307
+FreqW Acc: 0.495319
+Mean IoU: 0.305088
 """
 
 

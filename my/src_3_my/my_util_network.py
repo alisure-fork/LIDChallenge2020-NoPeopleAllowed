@@ -146,7 +146,7 @@ class MyNet(nn.Module):
         self.decoder_5_out = nn.Conv2d(128, self.num_classes + 1, 3, padding=1, bias=False)  # 160
         pass
 
-    def forward(self, x1, x2, pair_labels, has_class=False, has_cam=False, has_ss=False):
+    def forward(self, x1, x2, pair_labels, label1, label2, has_class=False, has_cam=False, has_ss=False):
         result = {}
 
         # -------------Encoder-------------
@@ -161,38 +161,29 @@ class MyNet(nn.Module):
             result["class_logits"] = {"x1": class_logits_1, "x2": class_logits_2}
             pass
 
-        cam_1 = self._cluster_activation_map(pair_labels, class_feature_1, self.class_l1.weight)  # 簇激活图
-        cam_2 = self._cluster_activation_map(pair_labels, class_feature_2, self.class_l1.weight)  # 簇激活图
+        cam_1, neg_cam_1 = self._cluster_activation_map(pair_labels, class_feature_1, self.class_l1.weight, labels=label1)  # 簇激活图
+        cam_2, neg_cam_2 = self._cluster_activation_map(pair_labels, class_feature_2, self.class_l1.weight, labels=label2)  # 簇激活图
+        cam_norm_1 = self._feature_norm(cam_1)
+        cam_norm_2 = self._feature_norm(cam_2)
+        neg_cam_norm_1 = self._feature_norm(neg_cam_1)
+        neg_cam_norm_2 = self._feature_norm(neg_cam_2)
 
         if has_cam:
-            cam_norm_1 = self._feature_norm(cam_1)
             cam_norm_large_1 = self._up_to_target(cam_norm_1, x1)
-            cam_norm_2 = self._feature_norm(cam_2)
             cam_norm_large_2 = self._up_to_target(cam_norm_2, x2)
+            neg_cam_norm_large_1 = self._up_to_target(neg_cam_norm_1, x1)
+            neg_cam_norm_large_2 = self._up_to_target(neg_cam_norm_2, x2)
 
             result["cam"] = {"cam_1": cam_1, "cam_2": cam_2,
                              "cam_norm_1": cam_norm_1, "cam_norm_2": cam_norm_2,
-                             "cam_norm_large_1": cam_norm_large_1, "cam_norm_large_2": cam_norm_large_2}
+                             "cam_norm_large_1": cam_norm_large_1, "cam_norm_large_2": cam_norm_large_2,
+                             "neg_cam_1": neg_cam_1, "neg_cam_2": neg_cam_2,
+                             "neg_cam_norm_1": neg_cam_norm_1, "neg_cam_norm_2": neg_cam_norm_2,
+                             "neg_cam_norm_large_1": neg_cam_norm_large_1, "neg_cam_norm_large_2": neg_cam_norm_large_2}
             pass
 
         # -------------Decoder-------------
         if has_ss:
-            # 最大值Mask
-            cam_mask_1 = torch.zeros_like(cam_1)
-            cam_mask_2 = torch.zeros_like(cam_2)
-            cam_mask_1[cam_1 == F.adaptive_max_pool2d(cam_1, (1, 1))] = 1.0
-            cam_mask_2[cam_2 == F.adaptive_max_pool2d(cam_2, (1, 1))] = 1.0
-
-            # 最小值Mask
-            cam_mask_min_1 = torch.zeros_like(cam_1)
-            cam_mask_min_2 = torch.zeros_like(cam_2)
-            # 最小的一个
-            # cam_mask_min_1[-cam_1 == F.adaptive_max_pool2d(-cam_1, (1, 1))] = 1.0
-            # cam_mask_min_2[-cam_2 == F.adaptive_max_pool2d(-cam_2, (1, 1))] = 1.0
-            # 小于0的
-            cam_mask_min_1[(cam_1 < 0.0) | (-cam_1 == F.adaptive_max_pool2d(-cam_1, (1, 1)))] = 1.0
-            cam_mask_min_2[(cam_2 < 0.0) | (-cam_2 == F.adaptive_max_pool2d(-cam_2, (1, 1)))] = 1.0
-
             # -------------Convert-------------
             e0_1, e1_1, e2_1, e3_1, e4_1 = self._convert_feature(feature=feature_1)
             e0_2, e1_2, e2_2, e3_2, e4_2 = self._convert_feature(feature=feature_2)
@@ -202,27 +193,42 @@ class MyNet(nn.Module):
             d5_2 = self._encoder(e0_2, e1_2, e2_2, e3_2, e4_2)  # 128 * 160 * 160
 
             ######################################################################################################
-            # Our
-            # cam_mask_large_1 = self._up_to_target(cam_mask_1, d5_1, mode="nearest")
-            # cam_mask_large_2 = self._up_to_target(cam_mask_2, d5_2, mode="nearest")
-            # cam_mask_min_large_1 = self._up_to_target(cam_mask_min_1, d5_1, mode="nearest")
-            # cam_mask_min_large_2 = self._up_to_target(cam_mask_min_2, d5_2, mode="nearest")
-            cam_mask_large_1 = self._up_to_target(cam_mask_1, d5_1)
-            cam_mask_large_2 = self._up_to_target(cam_mask_2, d5_2)
-            cam_mask_min_large_1 = self._up_to_target(cam_mask_min_1, d5_1)
-            cam_mask_min_large_2 = self._up_to_target(cam_mask_min_2, d5_2)
+            cam_large_1 = self._up_to_target(cam_norm_1, d5_1)
+            cam_large_2 = self._up_to_target(cam_norm_2, d5_2)
+            neg_cam_large_1 = self._up_to_target(neg_cam_norm_1, d5_1)
+            neg_cam_large_2 = self._up_to_target(neg_cam_norm_2, d5_2)
 
-            d5_mask_1 = torch.sum(torch.sum(cam_mask_large_1 * d5_1, dim=2), dim=2) / torch.sum(cam_mask_large_1)
-            d5_mask_2 = torch.sum(torch.sum(cam_mask_large_2 * d5_2, dim=2), dim=2) / torch.sum(cam_mask_large_2)
+            # CAM 正掩码 Mask
+            cam_mask_large_1 = torch.zeros_like(cam_large_1)
+            cam_mask_large_2 = torch.zeros_like(cam_large_2)
+            cam_mask_large_1[cam_large_1 > 0.9] = 1.0
+            cam_mask_large_2[cam_large_2 > 0.9] = 1.0
+
+            # CAM 负掩码 Mask
+            cam_mask_min_large_1 = torch.zeros_like(neg_cam_large_1)
+            cam_mask_min_large_2 = torch.zeros_like(neg_cam_large_2)
+            cam_mask_min_large_1[neg_cam_large_1 > 0.8] = 1.0
+            cam_mask_min_large_2[neg_cam_large_2 > 0.8] = 1.0
+
+            # Our
+            d5_mask_1 = torch.sum(torch.sum(cam_mask_large_1 * d5_1, dim=2), dim=2) / (torch.sum(cam_mask_large_1) + 1e-6)
+            d5_mask_2 = torch.sum(torch.sum(cam_mask_large_2 * d5_2, dim=2), dim=2) / (torch.sum(cam_mask_large_2) + 1e-6)
             d5_mask_4d_1 = torch.unsqueeze(torch.unsqueeze(d5_mask_1, dim=-1), dim=-1).expand_as(d5_2)
             d5_mask_4d_2 = torch.unsqueeze(torch.unsqueeze(d5_mask_2, dim=-1), dim=-1).expand_as(d5_1)
-
             d5_mask_2_to_1 = torch.cosine_similarity(d5_mask_4d_2, d5_1, dim=1)
             d5_mask_1_to_2 = torch.cosine_similarity(d5_mask_4d_1, d5_2, dim=1)
 
+            d5_mask_neg_1 = torch.sum(torch.sum(cam_mask_min_large_1 * d5_1, dim=2), dim=2) / (torch.sum(cam_mask_min_large_1) + 1e-6)
+            d5_mask_neg_2 = torch.sum(torch.sum(cam_mask_min_large_2 * d5_2, dim=2), dim=2) / (torch.sum(cam_mask_min_large_2) + 1e-6)
+            d5_mask_4d_neg_1 = torch.unsqueeze(torch.unsqueeze(d5_mask_neg_1, dim=-1), dim=-1).expand_as(d5_2)
+            d5_mask_4d_neg_2 = torch.unsqueeze(torch.unsqueeze(d5_mask_neg_2, dim=-1), dim=-1).expand_as(d5_1)
+            d5_mask_neg_2_to_1 = torch.cosine_similarity(d5_mask_4d_neg_2, d5_1, dim=1)
+            d5_mask_neg_1_to_2 = torch.cosine_similarity(d5_mask_4d_neg_1, d5_2, dim=1)
+
             result["our"] = {"cam_mask_large_1": cam_mask_large_1, "cam_mask_large_2": cam_mask_large_2,
                              "cam_mask_min_large_1": cam_mask_min_large_1, "cam_mask_min_large_2": cam_mask_min_large_2,
-                             "d5_mask_1_to_2": d5_mask_1_to_2, "d5_mask_2_to_1": d5_mask_2_to_1}
+                             "d5_mask_1_to_2": d5_mask_1_to_2, "d5_mask_2_to_1": d5_mask_2_to_1,
+                             "d5_mask_neg_2_to_1": d5_mask_neg_2_to_1, "d5_mask_neg_1_to_2": d5_mask_neg_1_to_2}
             ######################################################################################################
 
             d5_out_1 = self.decoder_5_out(d5_1)  # 21 * 160 * 160
@@ -320,7 +326,41 @@ class MyNet(nn.Module):
         return d5
 
     @staticmethod
-    def _cluster_activation_map(pair_labels, class_feature, weight_softmax):
+    def _cluster_activation_map(pair_labels, class_feature, weight_softmax, labels=None):
+        bz, nc, h, w = class_feature.shape
+
+        cam_list, neg_cam_list = [], []
+        for i in range(bz):
+            cam_weight = weight_softmax[pair_labels[i]]
+            cam_weight = cam_weight.view(nc, 1, 1).expand_as(class_feature[i])
+            cam = torch.sum(torch.mul(cam_weight, class_feature[i]), dim=0, keepdim=True)
+            cam[cam < 0] = 0
+            cam_list.append(torch.unsqueeze(cam, 0))
+
+            # TODO: ...
+            if labels is not None:
+                now_cam_sum = 0
+                now_cam_where = torch.zeros_like(cam_list[i][0])
+                now_label = torch.where(labels[i])[0]
+                for class_one in now_label:
+                    cam_weight = weight_softmax[class_one]
+                    cam_weight = cam_weight.view(nc, 1, 1).expand_as(class_feature[i])
+                    cam = torch.sum(torch.mul(cam_weight, class_feature[i]), dim=0, keepdim=True)
+                    now_cam_where[cam > 0] = 1
+                    now_cam_sum -= torch.unsqueeze(cam, 0)
+                    pass
+                now_cam_sum = now_cam_sum / (len(now_label) + 1e-6)
+                now_cam_where = torch.unsqueeze(now_cam_where, 0)
+                now_cam_sum[now_cam_where.bool()] = 0
+                neg_cam_list.append(now_cam_sum)
+                pass
+
+            pass
+
+        return torch.cat(cam_list) if labels is None else (torch.cat(cam_list), torch.cat(neg_cam_list))
+
+    @staticmethod
+    def _cluster_activation_map_old(pair_labels, class_feature, weight_softmax):
         bz, nc, h, w = class_feature.shape
 
         cam_list = []
