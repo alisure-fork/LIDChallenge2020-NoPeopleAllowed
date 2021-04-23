@@ -800,7 +800,8 @@ class ImageNetSegmentationBalance(Dataset):
         self.all_image_dict = {}
         for one in self.images_list:
             now_one = set(one[2])
-            if len(now_one) <= 2:
+            # if len(now_one) <= 2:
+            if len(now_one) <= len(now_one):
                 for one_one in now_one:
                     if one_one not in self.all_image_dict:
                         self.all_image_dict[one_one] = []

@@ -255,20 +255,25 @@ class Config(object):
 
     def __init__(self):
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 3"
+        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
 
         # 流程控制
         self.only_train_ss = True  # 是否训练SS
+        self.is_balance_data = True
         self.only_eval_ss = False  # 是否评估SS
         self.only_inference_ss = False  # 是否推理SS
 
-        self.is_balance_data = True
+        # 原始数据训练
+        # self.scales = (1.0, 0.5, 1.5)
+        # self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
 
+        # 平衡数据训练
         self.scales = (1.0, 0.5, 1.5)
-        self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
+        self.model_file_name = "../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8_scales"
 
+        # 其他方法生成的伪标签
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
@@ -276,7 +281,7 @@ class Config(object):
 
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
-        self.ss_milestones = [5, 7]
+        self.ss_milestones = [5, 8]
         self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
@@ -290,8 +295,9 @@ class Config(object):
         self.Net = DeepLabV3Plus
 
         self.data_root_path = self.get_data_root_path()
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "5"
+        run_name = "6"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
             run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
             self.ss_save_epoch_freq, self.ss_size, "_balance" if self.is_balance_data else "")
@@ -351,6 +357,18 @@ Overall Acc: 0.843774
 Mean Acc: 0.621268
 FreqW Acc: 0.750521
 Mean IoU: 0.461591
+
+../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth
+Overall Acc: 0.819173
+Mean Acc: 0.671673
+FreqW Acc: 0.717279
+Mean IoU: 0.460044
+
+../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth
+Overall Acc: 0.846122
+Mean Acc: 0.633350
+FreqW Acc: 0.753838
+Mean IoU: 0.458760
 """
 
 
