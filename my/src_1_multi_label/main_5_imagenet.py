@@ -173,17 +173,32 @@ class SSRunner(object):
                 assert len(image_info_list) == 1
 
                 # 标签
+                max_size = 1000
                 size = Image.open(image_info_list[0]).size
-                targets = F.interpolate(torch.unsqueeze(labels[0].float(), dim=0),
-                                        size=(size[1], size[0]), mode="nearest")
+                basename = os.path.basename(image_info_list[0])
+                final_name = os.path.join(final_save_path, basename.replace(".JPEG", ".png"))
+                if os.path.exists(final_name):
+                    continue
+
+                if size[0] < max_size and size[1] < max_size:
+                    targets = F.interpolate(torch.unsqueeze(labels[0].float().cuda(), dim=0),
+                                            size=(size[1], size[0]), mode="nearest").detach().cpu()
+                else:
+                    targets = F.interpolate(torch.unsqueeze(labels[0].float(), dim=0),
+                                            size=(size[1], size[0]), mode="nearest")
                 targets = targets[0].long().numpy()
 
                 # 预测
                 outputs = 0
-                for input_one in inputs:
+                for input_index, input_one in enumerate(inputs):
                     output_one = self.net(input_one.float().cuda())
-                    outputs += F.interpolate(output_one.detach().cpu(), size=(size[1], size[0]),
-                                             mode="bilinear", align_corners=False)
+                    if size[0] < max_size and size[1] < max_size:
+                        outputs += F.interpolate(output_one, size=(size[1], size[0]),
+                                                 mode="bilinear", align_corners=False).detach().cpu()
+                    else:
+                        outputs += F.interpolate(output_one.detach().cpu(), size=(size[1], size[0]),
+                                                 mode="bilinear", align_corners=False)
+                        pass
                     pass
                 outputs = outputs / len(inputs)
                 preds = outputs.max(dim=1)[1].numpy()
@@ -192,14 +207,12 @@ class SSRunner(object):
                 metrics.update(targets, preds)
 
                 if save_path:
-                    basename = os.path.basename(image_info_list[0])
                     Image.open(image_info_list[0]).save(os.path.join(save_path, basename))
                     DataUtil.gray_to_color(np.asarray(targets[0], dtype=np.uint8)).save(
                         os.path.join(save_path, basename.replace(".JPEG", "_l.png")))
                     DataUtil.gray_to_color(np.asarray(preds[0], dtype=np.uint8)).save(
                         os.path.join(save_path, basename.replace(".JPEG", ".png")))
-                    Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(
-                        os.path.join(final_save_path, basename.replace(".JPEG", ".png")))
+                    Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(final_name)
                     pass
                 pass
             pass
@@ -255,13 +268,13 @@ class Config(object):
 
     def __init__(self):
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = True  # 是否训练SS
+        self.only_train_ss = False  # 是否训练SS
         self.is_balance_data = True
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = False  # 是否推理SS
+        self.only_inference_ss = True  # 是否推理SS
 
         # 原始数据训练
         # self.scales = (1.0, 0.5, 1.5)
@@ -270,8 +283,8 @@ class Config(object):
 
         # 平衡数据训练
         self.scales = (1.0, 0.5, 1.5)
-        self.model_file_name = "../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8_scales"
+        self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales"
 
         # 其他方法生成的伪标签
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
@@ -348,11 +361,6 @@ Mean Acc: 0.662312
 FreqW Acc: 0.715434
 Mean IoU: 0.470527
 
-Overall Acc: 0.837372
-Mean Acc: 0.658561
-FreqW Acc: 0.745213
-Mean IoU: 0.459913
-
 Overall Acc: 0.843774
 Mean Acc: 0.621268
 FreqW Acc: 0.750521
@@ -364,11 +372,21 @@ Mean Acc: 0.671673
 FreqW Acc: 0.717279
 Mean IoU: 0.460044
 
-../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth
 Overall Acc: 0.846122
 Mean Acc: 0.633350
 FreqW Acc: 0.753838
 Mean IoU: 0.458760
+
+../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth  # all data balance
+Overall Acc: 0.820996
+Mean Acc: 0.685476
+FreqW Acc: 0.720114
+Mean IoU: 0.473003
+
+Overall Acc: 0.848850
+Mean Acc: 0.643933
+FreqW Acc: 0.758975
+Mean IoU: 0.465997
 """
 
 
