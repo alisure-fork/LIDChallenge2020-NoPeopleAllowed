@@ -58,8 +58,6 @@ class MyRunner(object):
             self.load_model(model_file_name)
             pass
 
-        # self.eval(epoch=0)
-
         for epoch in range(start_epoch, self.config.epoch_num):
             Tools.print()
             self._adjust_learning_rate(self.optimizer, epoch, lr=self.config.lr, change_epoch=self.config.change_epoch)
@@ -83,25 +81,48 @@ class MyRunner(object):
 
                 # 分类损失
                 class_logits = result["class_logits"]
-                loss_class = 30 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
+                loss_class = 10 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
                                    self.bce_with_logits_loss(class_logits["x2"], label2))
                 loss = loss_class
                 avg_meter.update("loss_class", loss_class.item())
 
                 if self.config.has_ss:
                     ####################################################################################################
-                    # CAM最大值掩码
+                    # CAM最大值掩码, 最小值掩码
                     ss_where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
-                    ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]
                     ss_where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
-                    ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]
-
-                    # CAM最小值掩码
                     ss_where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
-                    ss_value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]
                     ss_where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
-                    ss_value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]
+                    ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]  # 1
+                    ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]  # 1
+                    ss_value_cam_mask_min_large_12 = result["our"]["d5_mask_neg_2_to_1"][ss_where_cam_mask_large_1]  # 0
+                    ss_value_cam_mask_min_large_22 = result["our"]["d5_mask_neg_1_to_2"][ss_where_cam_mask_large_2]  # 0
+                    ss_value_cam_mask_large_12 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]  # 0
+                    ss_value_cam_mask_large_22 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]  # 0
 
+                    # 特征相似度损失
+                    loss_ss = 0
+                    #########################################
+                    if len(ss_value_cam_mask_large_1) > 0:
+                        loss_ss = self.bce_loss(ss_value_cam_mask_large_1, torch.ones_like(ss_value_cam_mask_large_1))
+                    if len(ss_value_cam_mask_large_2) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_large_2, torch.ones_like(ss_value_cam_mask_large_2))
+                    if len(ss_value_cam_mask_min_large_12) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_12, torch.zeros_like(ss_value_cam_mask_min_large_12))
+                    if len(ss_value_cam_mask_min_large_22) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_22, torch.zeros_like(ss_value_cam_mask_min_large_22))
+                    if len(ss_value_cam_mask_large_12) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_large_12, torch.zeros_like(ss_value_cam_mask_large_12))
+                    if len(ss_value_cam_mask_large_22) > 0:
+                        loss_ss += self.bce_loss(ss_value_cam_mask_large_22, torch.zeros_like(ss_value_cam_mask_large_22))
+                    #########################################
+                    if loss_ss > 0:
+                        loss = loss + loss_ss
+                        avg_meter.update("loss_ss", loss_ss.item())
+                        pass
+                    ####################################################################################################
+
+                    ####################################################################################################
                     # 输出的正标签
                     ce_where_cam_mask_large_1 = ss_where_cam_mask_large_1
                     ce_mask_large_1 = torch.ones_like(ce_where_cam_mask_large_1).long() * 255
@@ -119,30 +140,15 @@ class MyRunner(object):
                     ce_where_cam_mask_min_large_2 = ss_where_cam_mask_min_large_2
                     ce_mask_min_large_2 = torch.ones_like(ce_where_cam_mask_min_large_2).long() * 255
                     ce_mask_min_large_2[ce_where_cam_mask_min_large_2] = 0
-                    ####################################################################################################
-
-                    # 特征相似度损失
-                    loss_ss = 0
-                    if len(ss_value_cam_mask_large_1) > 0:
-                        loss_ss = self.bce_loss(ss_value_cam_mask_large_1, torch.ones_like(ss_value_cam_mask_large_1))
-                    if len(ss_value_cam_mask_large_2) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_large_2, torch.ones_like(ss_value_cam_mask_large_2))
-                    if len(ss_value_cam_mask_min_large_1) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_1, torch.zeros_like(ss_value_cam_mask_min_large_1))
-                    if len(ss_value_cam_mask_min_large_2) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_min_large_2, torch.zeros_like(ss_value_cam_mask_min_large_2))
-                    if loss_ss > 0:
-                        loss = loss + loss_ss
-                        avg_meter.update("loss_ss", loss_ss.item())
-                        pass
 
                     # 预测损失
                     loss_ce = self.ce_loss(result["ss"]["out_1"], ce_mask_large_1) + \
-                              self.ce_loss(result["ss"]["out_2"], ce_mask_large_1) + \
+                              self.ce_loss(result["ss"]["out_2"], ce_mask_large_2) + \
                               self.ce_loss(result["ss"]["out_1"], ce_mask_min_large_1) + \
                               self.ce_loss(result["ss"]["out_2"], ce_mask_min_large_2)
                     loss = loss + loss_ce
                     avg_meter.update("loss_ce", loss_ce.item())
+                    ####################################################################################################
                     pass
 
                 loss.backward()
@@ -196,51 +202,33 @@ class MyRunner(object):
 
         ###########################################################################
         # 1 Debug模型
-        self.net.train()
+        self.net.eval()
         for i, (pair_labels, inputs, masks, labels) in tqdm(
                 enumerate(self.data_loader_train), total=len(self.data_loader_train)):
             pair_labels = pair_labels.long().cuda()
             x1, x2 = inputs[0].float().cuda(), inputs[1].float().cuda()
-            # mask1, mask2 = masks[0].cuda(), masks[1].cuda()
             label1, label2 = labels[0].cuda(), labels[1].cuda()
-            self.optimizer.zero_grad()
 
             result = self.net(x1, x2, pair_labels, label1, label2, has_class=self.config.has_class,
                               has_cam=self.config.has_cam, has_ss=self.config.has_ss)
 
-            # 分类损失
-            class_logits = result["class_logits"]
-
             if self.config.has_ss:
                 # CAM最大值掩码
                 ss_where_cam_mask_large_1 = torch.squeeze(result["our"]["cam_mask_large_1"], dim=1) > 0.5
-                ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]
                 ss_where_cam_mask_large_2 = torch.squeeze(result["our"]["cam_mask_large_2"], dim=1) > 0.5
-                ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]
 
                 # CAM最小值掩码
                 ss_where_cam_mask_min_large_1 = torch.squeeze(result["our"]["cam_mask_min_large_1"], dim=1) > 0.5
-                ss_value_cam_mask_min_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]
                 ss_where_cam_mask_min_large_2 = torch.squeeze(result["our"]["cam_mask_min_large_2"], dim=1) > 0.5
-                ss_value_cam_mask_min_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]
 
                 # 输出的正标签
                 ce_where_cam_mask_large_1 = ss_where_cam_mask_large_1
-                ce_mask_large_1 = torch.ones_like(ce_where_cam_mask_large_1).long() * 255
-                now_pair_labels_1 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_1)
-                ce_mask_large_1[ce_where_cam_mask_large_1] = now_pair_labels_1[ce_where_cam_mask_large_1]
                 ce_where_cam_mask_large_2 = ss_where_cam_mask_large_2
-                ce_mask_large_2 = torch.ones_like(ce_where_cam_mask_large_2).long() * 255
-                now_pair_labels_2 = (pair_labels + 1).view(-1, 1, 1).expand_as(ce_mask_large_2)
-                ce_mask_large_2[ce_where_cam_mask_large_2] = now_pair_labels_2[ce_where_cam_mask_large_2]
 
                 # 输出的负标签
                 ce_where_cam_mask_min_large_1 = ss_where_cam_mask_min_large_1
-                ce_mask_min_large_1 = torch.ones_like(ce_where_cam_mask_min_large_1).long() * 255
-                ce_mask_min_large_1[ce_where_cam_mask_min_large_1] = 0
                 ce_where_cam_mask_min_large_2 = ss_where_cam_mask_min_large_2
-                ce_mask_min_large_2 = torch.ones_like(ce_where_cam_mask_min_large_2).long() * 255
-                ce_mask_min_large_2[ce_where_cam_mask_min_large_2] = 0
+                Tools.print()
                 pass
             pass
         ###########################################################################
@@ -428,7 +416,7 @@ class Config(object):
 
         # Debug
         self.only_train_debug = False
-        self.model_resume_pth = "../../../WSS_Model_My/SS/5_MNet_20_15_24_1_256_224/final_15.pth"
+        self.model_resume_pth = "../../../WSS_Model_My/SS/5_MNet_20_10_24_1_224/final_10.pth"
 
         self.has_class = True
         self.has_cam = True
@@ -436,8 +424,8 @@ class Config(object):
 
         self.num_classes = 20
         self.lr = 0.0001
-        self.epoch_num = 15
-        self.change_epoch = 10
+        self.epoch_num = 10
+        self.change_epoch = 6
         self.save_epoch_freq = 1
         self.eval_epoch_freq = 1
         self.batch_size = 8 * len(self.gpu_id.split(","))
@@ -498,12 +486,14 @@ Mean Acc: 0.588587
 FreqW Acc: 0.575668
 Mean IoU: 0.324335
 
-../../../WSS_Model_My/SS/5_MNet_20_15_24_1_256_224/final_15.pth
-mae:0.1023 f1:0.8313 acc:0.8313
-Overall Acc: 0.616045
-Mean Acc: 0.668307
-FreqW Acc: 0.495319
-Mean IoU: 0.305088
+../../../WSS_Model_My/SS/5_MNet_20_15_24_1_224/1.pth
+mae:0.1064 f1:0.8190 acc:0.8190
+Overall Acc: 0.748733
+Mean Acc: 0.534675
+FreqW Acc: 0.624344
+Mean IoU: 0.333368
+
+
 """
 
 

@@ -161,8 +161,10 @@ class MyNet(nn.Module):
             result["class_logits"] = {"x1": class_logits_1, "x2": class_logits_2}
             pass
 
-        cam_1, neg_cam_1 = self._cluster_activation_map(pair_labels, class_feature_1, self.class_l1.weight, labels=label1)  # 簇激活图
-        cam_2, neg_cam_2 = self._cluster_activation_map(pair_labels, class_feature_2, self.class_l1.weight, labels=label2)  # 簇激活图
+        cam_1, neg_cam_1 = self._cluster_activation_map(pair_labels, class_feature_1,
+                                                        self.class_l1.weight, labels=label1)  # 簇激活图
+        cam_2, neg_cam_2 = self._cluster_activation_map(pair_labels, class_feature_2,
+                                                        self.class_l1.weight, labels=label2)  # 簇激活图
         cam_norm_1 = self._feature_norm(cam_1)
         cam_norm_2 = self._feature_norm(cam_2)
         neg_cam_norm_1 = self._feature_norm(neg_cam_1)
@@ -201,14 +203,14 @@ class MyNet(nn.Module):
             # CAM 正掩码 Mask
             cam_mask_large_1 = torch.zeros_like(cam_large_1)
             cam_mask_large_2 = torch.zeros_like(cam_large_2)
-            cam_mask_large_1[cam_large_1 > 0.9] = 1.0
-            cam_mask_large_2[cam_large_2 > 0.9] = 1.0
+            cam_mask_large_1[cam_large_1 > 0.5] = 1.0
+            cam_mask_large_2[cam_large_2 > 0.5] = 1.0
 
             # CAM 负掩码 Mask
             cam_mask_min_large_1 = torch.zeros_like(neg_cam_large_1)
             cam_mask_min_large_2 = torch.zeros_like(neg_cam_large_2)
-            cam_mask_min_large_1[neg_cam_large_1 > 0.8] = 1.0
-            cam_mask_min_large_2[neg_cam_large_2 > 0.8] = 1.0
+            cam_mask_min_large_1[neg_cam_large_1 > 0.5] = 1.0
+            cam_mask_min_large_2[neg_cam_large_2 > 0.5] = 1.0
 
             # Our
             d5_mask_1 = torch.sum(torch.sum(cam_mask_large_1 * d5_1, dim=2), dim=2) / (torch.sum(cam_mask_large_1) + 1e-6)
