@@ -402,6 +402,12 @@ Overall Acc: 0.855283  # 4 scales (1.0, 0.5, 1.5, 2.0)
 Mean Acc: 0.650679
 FreqW Acc: 0.766168
 Mean IoU: 0.473421
+
+Overall Acc: 0.855283  # 7 scales (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+Overall Acc: 0.855420
+Mean Acc: 0.659207
+FreqW Acc: 0.766650
+Mean IoU: 0.475058
 """
 
 
