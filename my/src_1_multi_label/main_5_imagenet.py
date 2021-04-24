@@ -17,8 +17,8 @@ from torch.utils.data import DataLoader, Dataset
 from util_data import DataUtil, DatasetUtil, MyTransform
 from torch.nn.parallel.data_parallel import DataParallel
 sys.path.append("../../")
-from util_network import DeepLabV3Plus
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
+from util_network import DeepLabV3Plus, deeplabv3_resnet50, deeplabv3plus_resnet101
 
 
 class SSRunner(object):
@@ -36,7 +36,8 @@ class SSRunner(object):
                                              False, num_workers=16, drop_last=True)
 
         # Model
-        self.net = self.config.Net(num_classes=self.config.ss_num_classes, output_stride=self.config.output_stride)
+        self.net = self.config.Net(num_classes=self.config.ss_num_classes,
+                                   output_stride=self.config.output_stride, arch=self.config.arch)
 
         if self.config.only_train_ss:
             self.net = BalancedDataParallel(0, self.net, dim=0).cuda()
@@ -271,30 +272,30 @@ class Config(object):
         # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = False  # 是否训练SS
+        self.only_train_ss = True  # 是否训练SS
         self.is_balance_data = True
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = True  # 是否推理SS
+        self.only_inference_ss = False  # 是否推理SS
 
-        # 原始数据训练
+        # 1 原始数据训练
         # self.scales = (1.0, 0.5, 1.5)
-        # self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10_scales"
+        # self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10_scales"
 
-        # 平衡数据训练
+        # 2 平衡数据训练
         # self.scales = (1.0, 0.5, 1.5)
-        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales"
+        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales"
 
-        # 平衡数据训练
+        # 3 平衡数据训练
         # self.scales = (1.0, 0.5, 1.5, 2.0)
-        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales_4"
+        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
+        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales_4"
 
-        # 平衡数据训练
+        # 4 平衡数据训练
         self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8_scales_7"
+        self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales_7"
 
         # 其他方法生成的伪标签
         # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
@@ -316,13 +317,15 @@ class Config(object):
 
         # 网络
         self.Net = DeepLabV3Plus
+        # self.arch, self.arch_name = deeplabv3_resnet50, "DeepLabV3PlusResNet50"
+        self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
 
         self.data_root_path = self.get_data_root_path()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "6"
+        run_name = "7"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
-            run_name, "DeepLabV3PlusResNet101", self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
+            run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
             self.ss_save_epoch_freq, self.ss_size, "_balance" if self.is_balance_data else "")
         Tools.print(self.model_name)
 
@@ -344,19 +347,19 @@ class Config(object):
 
 
 """
-../../../WSS_Model_SS/1_DeepLabV3PlusResNet101_201_10_24_1_352/ss_0.pth
+../../../WSS_Model_SS/1_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
 Overall Acc: 0.756473
 Mean Acc: 0.192014
 FreqW Acc: 0.596403
 Mean IoU: 0.138673
 
-../../../WSS_Model_SS/2_DeepLabV3PlusResNet101_201_10_24_1_352/ss_0.pth
+../../../WSS_Model_SS/2_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
 Overall Acc: 0.731829
 Mean Acc: 0.483936
 FreqW Acc: 0.604147
 Mean IoU: 0.259592
 
-../../../WSS_Model_SS/3_DeepLabV3PlusResNet101_201_10_24_1_352/ss_0.pth
+../../../WSS_Model_SS/3_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
 Overall Acc: 0.761370
 Mean Acc: 0.315599
 FreqW Acc: 0.605419
@@ -365,7 +368,7 @@ Mean IoU: 0.220519
 
 
 """
-../../../WSS_Model_SS/4_DeepLabV3PlusResNet101_201_10_18_1_352/ss_final_10.pth
+../../../WSS_Model_SS/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10.pth
 Overall Acc: 0.818186
 Mean Acc: 0.662312
 FreqW Acc: 0.715434
@@ -376,7 +379,7 @@ Mean Acc: 0.621268
 FreqW Acc: 0.750521
 Mean IoU: 0.461591
 
-../../../WSS_Model_SS/5_DeepLabV3PlusResNet101_201_10_12_1_352_balance/ss_8.pth
+../../../WSS_Model_SS/5_DeepLabV3PlusResNet50_201_10_12_1_352_balance/ss_8.pth
 Overall Acc: 0.819173
 Mean Acc: 0.671673
 FreqW Acc: 0.717279
@@ -387,7 +390,7 @@ Mean Acc: 0.633350
 FreqW Acc: 0.753838
 Mean IoU: 0.458760
 
-../../../WSS_Model_SS/6_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_8.pth  # all data balance
+../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth  # all data balance
 Overall Acc: 0.820996
 Mean Acc: 0.685476
 FreqW Acc: 0.720114
