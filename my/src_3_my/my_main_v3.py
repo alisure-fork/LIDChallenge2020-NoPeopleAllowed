@@ -12,38 +12,34 @@ import torch.optim as optim
 import torch.nn.functional as F
 from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
-from util_blance_gpu import BalancedDataParallel
 from torch.utils.data import DataLoader, Dataset
-from util_data import DataUtil, DatasetUtil, MyTransform
-from torch.nn.parallel.data_parallel import DataParallel
 sys.path.append("../../")
+from my_util_data2 import DatasetUtil
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
-from util_network import DeepLabV3Plus, deeplabv3_resnet50, deeplabv3plus_resnet101
+from my_util_network import DeepLabV3Plus, deeplabv3_resnet50, deeplabv3plus_resnet101
 
 
-class SSRunner(object):
+class VOCRunner(object):
 
     def __init__(self, config):
         self.config = config
 
         # Data
-        self.dataset_ss_train, _, self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss, self.config.ss_size, is_balance=self.config.is_balance_data,
-            data_root=self.config.data_root_path, train_label_path=self.config.label_path)
-        self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
-                                               True, num_workers=16, drop_last=True)
-        self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
-                                             False, num_workers=16, drop_last=True)
+        self.dataset_voc_train = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss_voc_train, self.config.ss_size, data_root=self.config.data_root_path,
+            train_label_path=self.config.train_label_path, sampling=self.config.sampling)
+        self.data_loader_ss_train = DataLoader(
+            self.dataset_voc_train, self.config.ss_batch_size, shuffle=True, num_workers=16)
+
+        self.dataset_voc_val = DatasetUtil.get_dataset_by_type(
+            DatasetUtil.dataset_type_ss_voc_val, self.config.ss_size, data_root=self.config.data_root_path,
+            sampling=self.config.sampling)
+        self.data_loader_ss_val = DataLoader(self.dataset_voc_val, 1, shuffle=False, num_workers=8)
 
         # Model
         self.net = self.config.Net(num_classes=self.config.ss_num_classes,
                                    output_stride=self.config.output_stride, arch=self.config.arch)
-
-        if self.config.only_train_ss:
-            self.net = BalancedDataParallel(0, self.net, dim=0).cuda()
-        else:
-            self.net = DataParallel(self.net).cuda()
-            pass
+        self.net = nn.DataParallel(self.net).cuda()
         cudnn.benchmark = True
 
         # Optimize
@@ -76,9 +72,6 @@ class SSRunner(object):
             # 1 训练模型
             all_loss = 0.0
             self.net.train()
-            if self.config.is_balance_data:
-                self.dataset_ss_train.reset()
-                pass
             for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_train),
                                             total=len(self.data_loader_ss_train)):
                 inputs, labels = inputs.float().cuda(), labels.long().cuda()
@@ -91,10 +84,6 @@ class SSRunner(object):
                 self.optimizer.step()
 
                 all_loss += loss.item()
-
-                if (i + 1) % (len(self.data_loader_ss_train) // 10) == 0:
-                    self.eval_ss(epoch=epoch)
-                    pass
                 pass
             self.scheduler.step()
             ###########################################################################
@@ -238,28 +227,28 @@ class SSRunner(object):
 
 
 def train(config):
-    ss_runner = SSRunner(config=config)
+
+    voc_runner = VOCRunner(config=config)
 
     if config.only_inference_ss:
         dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss_scale, config.ss_size, scales=config.scales,
-            data_root=config.data_root_path, train_label_path=config.label_path)
-        data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=16)
-        data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=16)
+            DatasetUtil.dataset_type_ss_voc_val_scale, config.ss_size,
+            scales=config.scales, data_root=config.data_root_path)
+        data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=8)
+        data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=8)
 
-        # ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
-        #                        save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
         ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
         return
 
     if config.only_eval_ss:
-        ss_runner.eval_ss(epoch=0, model_file_name=config.model_file_name)
+        voc_runner.eval_ss(epoch=0, model_file_name=os.path.join(config.ss_model_dir, "ss_final_20.pth"))
         return
 
-    # 训练MIC
     if config.only_train_ss:
-        ss_runner.train_ss(start_epoch=0, model_file_name=None)
+        voc_runner.train_ss(start_epoch=0, model_file_name=None)
         return
 
     pass
@@ -268,61 +257,34 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
-        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "1", "1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = False  # 是否训练SS
-        self.is_balance_data = True
-        self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = True  # 是否推理SS
+        self.only_train_ss = True  # 是否训练
+        self.only_inference_ss = False
+        self.only_eval_ss = False
+        self.sampling = False
 
-        # 1 原始数据训练
-        # self.scales = (1.0, 0.5, 1.5)
-        # self.model_file_name = "../../../WSS_Model_SS/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10_scales"
-
-        # 2 平衡数据训练
-        # self.scales = (1.0, 0.5, 1.5)
-        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales"
-
-        # 3 平衡数据训练
-        # self.scales = (1.0, 0.5, 1.5, 2.0)
-        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales_4"
-
-        # 4 平衡数据训练
-        # self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        # self.model_file_name = "../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales_7"
-
-        # 4 平衡数据训练
-        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        self.model_file_name = "../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7_scales_7"
-        # self.model_file_name = "../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_final_10.pth"
-        # self.eval_save_path = "../../../WSS_Model_SS_EVAL/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_10_scales_7"
-
-        # 其他方法生成的伪标签
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
-        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
-
-        self.ss_num_classes = 201
-        self.ss_epoch_num = 10
-        self.ss_milestones = [5, 8]
-        self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
+        self.ss_num_classes = 21
+        self.ss_epoch_num = 100
+        self.ss_milestones = [40, 70]
+        self.ss_batch_size = 6 * len(self.gpu_id_4.split(","))
         self.ss_lr = 0.001
-        self.ss_save_epoch_freq = 1
-        self.ss_eval_epoch_freq = 1
+        self.ss_save_epoch_freq = 5
+        self.ss_eval_epoch_freq = 5
 
         # 图像大小
-        self.ss_size = 352
+        self.ss_size = 513  # 352
         self.output_stride = 16
+
+        # 伪标签
+        self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
+        # self.train_label_path = None
+
+        # 推理
+        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        self.model_file_name = "../../../WSS_Model_VOC/1_DeepLabV3PlusResNet50_21_20_18_1_513/ss_final_20.pth"
+        self.eval_save_path = "../../../WSS_Model_SS_EVAL/1_DeepLabV3PlusResNet50_21_20_18_1_513/ss_20_scales_7"
 
         # 网络
         self.Net = DeepLabV3Plus
@@ -332,106 +294,47 @@ class Config(object):
         self.data_root_path = self.get_data_root_path()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "7"
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
-            run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
-            self.ss_save_epoch_freq, self.ss_size, "_balance" if self.is_balance_data else "")
+        run_name = "5"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
+            run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num,
+            self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
         Tools.print(self.model_name)
 
-        self.ss_model_dir = "../../../WSS_Model_SS/{}".format(self.model_name)
+        self.ss_model_dir = "../../../WSS_Model_VOC/{}".format(self.model_name)
         self.ss_save_result_txt = Tools.new_dir("{}/result.txt".format(self.ss_model_dir))
         pass
 
     @staticmethod
     def get_data_root_path():
         if "Linux" in platform.platform():
-            data_root = '/mnt/4T/Data/data/L2ID/data'
+            data_root = '/mnt/4T/Data/data/SS/voc'
             if not os.path.isdir(data_root):
-                data_root = "/media/ubuntu/4T/ALISURE/Data/L2ID/data"
+                data_root = "/media/ubuntu/4T/ALISURE/Data/SS/voc"
         else:
-            data_root = "F:\\data\\L2ID\\data"
+            data_root = "F:\\data\\SS\\voc"
         return data_root
 
     pass
 
 
 """
-../../../WSS_Model_SS/1_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
-Overall Acc: 0.756473
-Mean Acc: 0.192014
-FreqW Acc: 0.596403
-Mean IoU: 0.138673
+../../../WSS_Model_VOC/1_DeepLabV3PlusResNet50_21_20_18_1_513/ss_final_20.pth
+Overall Acc: 0.893457
+Mean Acc: 0.811502
+FreqW Acc: 0.820158
+Mean IoU: 0.629518
 
-../../../WSS_Model_SS/2_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
-Overall Acc: 0.731829
-Mean Acc: 0.483936
-FreqW Acc: 0.604147
-Mean IoU: 0.259592
+../../../WSS_Model_VOC/3_DeepLabV3PlusResNet50_21_100_18_5_513/ss_final_100.pth
+Overall Acc: 0.942903
+Mean Acc: 0.867867
+FreqW Acc: 0.898047
+Mean IoU: 0.754826
 
-../../../WSS_Model_SS/3_DeepLabV3PlusResNet50_201_10_24_1_352/ss_0.pth
-Overall Acc: 0.761370
-Mean Acc: 0.315599
-FreqW Acc: 0.605419
-Mean IoU: 0.220519
-"""
-
-
-"""
-../../../WSS_Model_SS/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10.pth
-Overall Acc: 0.818186
-Mean Acc: 0.662312
-FreqW Acc: 0.715434
-Mean IoU: 0.470527
-
-Overall Acc: 0.843774
-Mean Acc: 0.621268
-FreqW Acc: 0.750521
-Mean IoU: 0.461591
-
-../../../WSS_Model_SS/5_DeepLabV3PlusResNet50_201_10_12_1_352_balance/ss_8.pth
-Overall Acc: 0.819173
-Mean Acc: 0.671673
-FreqW Acc: 0.717279
-Mean IoU: 0.460044
-
-Overall Acc: 0.846122
-Mean Acc: 0.633350
-FreqW Acc: 0.753838
-Mean IoU: 0.458760
-
-../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth  # all data balance
-Overall Acc: 0.820996
-Mean Acc: 0.685476
-FreqW Acc: 0.720114
-Mean IoU: 0.473003
-
-Overall Acc: 0.848850  # 3 scales (1.0, 0.5, 1.5)
-Mean Acc: 0.643933
-FreqW Acc: 0.758975
-Mean IoU: 0.465997
-
-Overall Acc: 0.855283  # 4 scales (1.0, 0.5, 1.5, 2.0)
-Mean Acc: 0.650679
-FreqW Acc: 0.766168
-Mean IoU: 0.473421
-
-Overall Acc: 0.855283  # 7 scales (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-Overall Acc: 0.855420
-Mean Acc: 0.659207
-FreqW Acc: 0.766650
-Mean IoU: 0.475058
-
-../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7.pth  # all data balance
-Overall Acc: 0.824271
-Mean Acc: 0.677893
-FreqW Acc: 0.724587
-Mean IoU: 0.482257
-
-2021-04-25 18:12:37 
-Overall Acc: 0.856393
-Mean Acc: 0.650578
-FreqW Acc: 0.767412
-Mean IoU: 0.484445
+../../../WSS_Model_VOC/4_DeepLabV3PlusResNet50_21_100_18_5_513/ss_60.pth
+Overall Acc: 0.902363
+Mean Acc: 0.782532
+FreqW Acc: 0.830100
+Mean IoU: 0.651673
 """
 
 

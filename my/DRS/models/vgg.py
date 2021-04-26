@@ -1,11 +1,12 @@
-import torch
-import torch.nn as nn
-import torch.utils.model_zoo as model_zoo
-import torch.nn.functional as F
-import math
-import cv2
-import numpy as np
 import os
+import cv2
+import math
+import torch
+import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.utils.model_zoo as model_zoo
+
 
 model_urls = {'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth'}
 
@@ -45,8 +46,8 @@ class DRS_learnable(nn.Module):
         x = torch.min(x, x_max * control)
             
         return x
-        
-    
+
+
 class DRS(nn.Module):
     """ 
     DRS non-learnable setting
@@ -76,10 +77,10 @@ class DRS(nn.Module):
         
         return x
 
-    
+
 class VGG(nn.Module):
+
     def __init__(self, features, delta=0, num_classes=20, init_weights=True):
-        
         super(VGG, self).__init__()
         
         self.features = features
@@ -149,7 +150,9 @@ class VGG(nn.Module):
             self._initialize_weights(self.layer5_relu1)
             self._initialize_weights(self.layer5_relu2)
             self._initialize_weights(self.layer5_relu3)
-        
+            pass
+
+        pass
 
     def forward(self, x, label=None, size=None):
         if size is None:
@@ -210,30 +213,24 @@ class VGG(nn.Module):
         if label is None:
             # for training
             return logit
-        
         else:
             # for validation
             cam = self.cam_normalize(x.detach(), size, label)
-
             return logit, cam
+        pass
 
-    
     def fc(self, x):
         x = F.avg_pool2d(x, kernel_size=(x.size(2), x.size(3)), padding=0)
         x = x.view(-1, 20)
         return x
-    
-    
+
     def cam_normalize(self, cam, size, label):
         cam = F.relu(cam)
         cam = F.interpolate(cam, size=size, mode='bilinear', align_corners=True)
         cam /= F.adaptive_max_pool2d(cam, 1) + 1e-5
-        
         cam = cam * label[:, :, None, None] # clean
-        
         return cam
-    
-    
+
     def _initialize_weights(self, layer):
         for m in layer.modules():
             if isinstance(m, nn.Conv2d):
@@ -249,13 +246,11 @@ class VGG(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 if m.bias is not None:
                     m.bias.data.zero_()
-                    
 
     def get_parameter_groups(self):
         groups = ([], [], [], [])
 
         for name, value in self.named_parameters():
-
             if 'extra' in name or 'fc' in name:
                 if 'weight' in name:
                     groups[2].append(value)
@@ -268,12 +263,12 @@ class VGG(nn.Module):
                     groups[1].append(value)
         return groups
 
-        
-        
-        
+    pass
+
+
 #######################################################################################################
-        
-    
+
+
 def make_layers(cfg, batch_norm=False):
     layers = []
     in_channels = 3
@@ -306,22 +301,15 @@ cfg = {
 
 def vgg16(pretrained=True, delta=0):
     model = VGG(make_layers(cfg['D1']), delta=delta)
-    
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['vgg16']), strict=False)
-        
     return model
 
 
 if __name__ == '__main__':
     import copy
-    
     model = vgg16(pretrained=True, delta=0.6)
-
     print(model)
-    
     input = torch.randn(2, 3, 321, 321)
-
     out = model(input)
-    
     model.get_parameter_groups()

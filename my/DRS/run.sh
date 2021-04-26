@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Training Classifier with the learnable-DRS
 CUDA_VISIBLE_DEVICES=0,1 python scripts/train_cls.py \
     --img_dir=/data/DB/VOC2012/ \
