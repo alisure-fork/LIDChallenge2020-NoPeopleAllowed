@@ -466,7 +466,7 @@ class VOCSegmentation(Dataset):
         image, mask = self.transform(image, mask)
 
         if self.return_image_info:
-            return image, mask, image_path
+            return image, mask, image_path, label_path
 
         return image, mask
 
@@ -500,7 +500,7 @@ class VOCSegmentationScales(Dataset):
         mask_list = [one[1] for one in image_mask_list]
 
         if self.return_image_info:
-            return image_list, mask_list, image_path
+            return image_list, mask_list, image_path, label_path
         return image_list, mask_list
 
     pass
@@ -528,7 +528,7 @@ class DatasetUtil(object):
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_voc_ss(image_size=image_size)
-            return VOCSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+            return VOCSegmentation(label_image_path, transform=transform_test, return_image_info=True)
         elif dataset_type == cls.dataset_type_ss_voc_val_scale:
             data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info

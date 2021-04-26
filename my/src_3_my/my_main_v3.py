@@ -133,12 +133,17 @@ class VOCRunner(object):
         self.net.eval()
         metrics = StreamSegMetrics(self.config.ss_num_classes)
         with torch.no_grad():
-            for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_val), total=len(self.data_loader_ss_val)):
+            for i, (inputs, labels, image_info_list, label_info_list) in tqdm(
+                    enumerate(self.data_loader_ss_val), total=len(self.data_loader_ss_val)):
+                assert len(image_info_list) == 1
+                size = Image.open(label_info_list[0]).size
+
                 inputs = inputs.float().cuda()
-                labels = labels.long().cuda()
                 outputs = self.net(inputs)
+                outputs = F.interpolate(outputs, size=(size[1], size[0]), mode="bilinear", align_corners=False)
+
                 preds = outputs.detach().max(dim=1)[1].cpu().numpy()
-                targets = labels.cpu().numpy()
+                targets = np.expand_dims(np.asarray(Image.open(label_info_list[0])), axis=0)
 
                 metrics.update(targets, preds)
                 pass
@@ -159,36 +164,25 @@ class VOCRunner(object):
         self.net.eval()
         metrics = StreamSegMetrics(self.config.ss_num_classes)
         with torch.no_grad():
-            for i, (inputs, labels, image_info_list) in tqdm(enumerate(data_loader), total=len(data_loader)):
+            for i, (inputs, labels, image_info_list, label_info_list) in tqdm(
+                    enumerate(data_loader), total=len(data_loader)):
                 assert len(image_info_list) == 1
 
+
                 # 标签
-                max_size = 1000
-                size = Image.open(image_info_list[0]).size
                 basename = os.path.basename(image_info_list[0])
                 final_name = os.path.join(final_save_path, basename.replace(".JPEG", ".png"))
+                size = Image.open(label_info_list[0]).size
                 if os.path.exists(final_name):
                     continue
-
-                if size[0] < max_size and size[1] < max_size:
-                    targets = F.interpolate(torch.unsqueeze(labels[0].float().cuda(), dim=0),
-                                            size=(size[1], size[0]), mode="nearest").detach().cpu()
-                else:
-                    targets = F.interpolate(torch.unsqueeze(labels[0].float(), dim=0),
-                                            size=(size[1], size[0]), mode="nearest")
-                targets = targets[0].long().numpy()
+                targets = np.expand_dims(np.asarray(Image.open(label_info_list[0])), axis=0)
 
                 # 预测
                 outputs = 0
                 for input_index, input_one in enumerate(inputs):
                     output_one = self.net(input_one.float().cuda())
-                    if size[0] < max_size and size[1] < max_size:
-                        outputs += F.interpolate(output_one, size=(size[1], size[0]),
-                                                 mode="bilinear", align_corners=False).detach().cpu()
-                    else:
-                        outputs += F.interpolate(output_one.detach().cpu(), size=(size[1], size[0]),
-                                                 mode="bilinear", align_corners=False)
-                        pass
+                    outputs += F.interpolate(output_one, size=(size[1], size[0]),
+                                             mode="bilinear", align_corners=False).detach().cpu()
                     pass
                 outputs = outputs / len(inputs)
                 preds = outputs.max(dim=1)[1].numpy()
