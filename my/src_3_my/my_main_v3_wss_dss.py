@@ -31,7 +31,14 @@ class MyRunner(object):
         cudnn.benchmark = True
 
         # 不同层设置不同的学习率
-        self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.lr, betas=(0.9, 0.999), weight_decay=0)
+        base_params = list(map(id, self.net.module.backbone.parameters()))
+        left_params = filter(lambda p: id(p) not in base_params, self.net.module.parameters())
+        self.optimizer = optim.SGD(params=[
+            {'params': self.net.module.backbone.parameters(), 'lr': self.config.lr},
+            {'params': left_params, 'lr': self.config.lr * 10},
+        ], lr=self.config.lr, momentum=0.9, weight_decay=1e-4)
+        # self.optimizer = optim.Adam(self.net.parameters(), lr=self.config.lr, betas=(0.9, 0.999), weight_decay=0)
+        self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.config.milestones, gamma=0.1)
 
         # Loss
         self.bce_with_logits_loss = nn.BCEWithLogitsLoss().cuda()
@@ -60,9 +67,9 @@ class MyRunner(object):
 
         for epoch in range(start_epoch, self.config.epoch_num):
             Tools.print()
-            self._adjust_learning_rate(self.optimizer, epoch, lr=self.config.lr, change_epoch=self.config.change_epoch)
-            Tools.print('Epoch:{:03d}, lr={:.6f}'.format(
-                epoch, self.optimizer.param_groups[0]['lr']), txt_path=self.config.save_result_txt)
+            Tools.print('Epoch:{:2d}, lr={:.6f} lr2={:.6f}'.format(
+                epoch, self.optimizer.param_groups[0]['lr'], self.optimizer.param_groups[1]['lr']),
+                txt_path=self.config.save_result_txt)
 
             ###########################################################################
             # 1 训练模型
@@ -119,6 +126,7 @@ class MyRunner(object):
                 self.optimizer.step()
                 avg_meter.update("loss", loss.item())
                 pass
+            self.scheduler.step()
             ###########################################################################
 
             Tools.print("[E:{:3d}/{:3d}] loss:{:.4f} class:{:.4f} ss:{:.4f} ce:{:.4f} cam:{:.4f}".format(
@@ -290,14 +298,6 @@ class MyRunner(object):
         pass
 
     @staticmethod
-    def _adjust_learning_rate(optimizer, epoch, lr, change_epoch=30):
-        if epoch > change_epoch:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr * 0.1
-                pass
-        pass
-
-    @staticmethod
     def _acc(net_out, labels):
         acc_num, total_num = 0, 0
         for out_one, label_one in zip(net_out, labels):
@@ -367,11 +367,11 @@ class Config(object):
             self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
 
         self.num_classes = 20
-        self.lr = 0.0001
-        self.epoch_num = 50
-        self.change_epoch = 30
-        self.save_epoch_freq = 1
-        self.eval_epoch_freq = 1
+        self.lr = 0.001
+        self.epoch_num = 100
+        self.milestones = [50, 80]
+        self.save_epoch_freq = 5
+        self.eval_epoch_freq = 5
 
         # self.input_size = 352
         # self.batch_size = 4 * len(self.gpu_id.split(","))
@@ -406,6 +406,8 @@ class Config(object):
 
 
 """
+Adam
+
 ../../../WSS_Model_My/DSS/1_DualNet_20_10_24_1_224/final_10.pth
 mae:0.0881 f1:0.8518 acc:0.8518
 Overall Acc: 0.933770
@@ -426,6 +428,13 @@ Overall Acc: 0.930570
 Mean Acc: 0.823591
 FreqW Acc: 0.876711
 Mean IoU: 0.704446
+
+../../../WSS_Model_My/DSS/4_DualNet_20_20_32_1_224/14.pth
+mae:0.0902 f1:0.8534 acc:0.8534
+Overall Acc: 0.931821
+Mean Acc: 0.816860
+FreqW Acc: 0.878234
+Mean IoU: 0.707803
 """
 
 
