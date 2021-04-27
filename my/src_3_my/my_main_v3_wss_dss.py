@@ -35,7 +35,7 @@ class MyRunner(object):
 
         # Loss
         self.bce_with_logits_loss = nn.BCEWithLogitsLoss().cuda()
-        self.bce_loss = nn.BCELoss().cuda()
+        self.mse_loss = nn.MSELoss().cuda()
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').cuda()
 
         # Data
@@ -66,8 +66,8 @@ class MyRunner(object):
 
             ###########################################################################
             # 1 训练模型
-            avg_meter = AverageMeter()
             self.net.train()
+            avg_meter = AverageMeter()
             for i, (pair_labels, inputs, masks, labels) in tqdm(
                     enumerate(self.data_loader_train), total=len(self.data_loader_train)):
                 pair_labels = pair_labels.long().cuda()
@@ -79,45 +79,34 @@ class MyRunner(object):
                 result = self.net(x1, x2, pair_labels, has_class=self.config.has_class,
                                   has_cam=self.config.has_cam, has_ss=self.config.has_ss)
 
+                ####################################################################################################
                 # 分类损失
                 class_logits = result["class_logits"]
                 loss_class = 5 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
                                   self.bce_with_logits_loss(class_logits["x2"], label2))
                 loss = loss_class
                 avg_meter.update("loss_class", loss_class.item())
+                ####################################################################################################
 
-                ss_where_cam_mask_large_1 = mask1 == (pair_labels + 1).view(-1, 1, 1).expand_as(mask1)
-                ss_where_cam_mask_large_2 = mask2 == (pair_labels + 1).view(-1, 1, 1).expand_as(mask2)
-                ss_where_cam_mask_min_large_1 = mask1 != (pair_labels + 1).view(-1, 1, 1).expand_as(mask1)
-                ss_where_cam_mask_min_large_2 = mask2 != (pair_labels + 1).view(-1, 1, 1).expand_as(mask2)
+                cam_mask_large_1 = torch.zeros_like(result["our"]["d5_mask_2_to_1"])
+                cam_mask_large_1[mask1 == (pair_labels + 1).view(-1, 1, 1).expand_as(cam_mask_large_1)] = 1
+                cam_mask_large_2 = torch.zeros_like(result["our"]["d5_mask_1_to_2"])
+                cam_mask_large_2[mask2 == (pair_labels + 1).view(-1, 1, 1).expand_as(cam_mask_large_1)] = 1
 
                 if self.config.has_ss:
                     ####################################################################################################
-                    # CAM最大值掩码, 最小值掩码
-                    ss_value_cam_mask_large_1 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_large_1]  # 1
-                    ss_value_cam_mask_large_2 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_large_2]  # 1
-                    ss_value_cam_mask_large_12 = result["our"]["d5_mask_2_to_1"][ss_where_cam_mask_min_large_1]  # 0
-                    ss_value_cam_mask_large_22 = result["our"]["d5_mask_1_to_2"][ss_where_cam_mask_min_large_2]  # 0
-
+                    # 激活图损失
+                    loss_cam = self.mse_loss(torch.squeeze(result["cam"]["cam_norm_large_1"], dim=1), cam_mask_large_1) + \
+                               self.mse_loss(torch.squeeze(result["cam"]["cam_norm_large_2"], dim=1), cam_mask_large_2)
+                    loss = loss + loss_cam
+                    avg_meter.update("loss_cam", loss_cam.item())
+                    ##################################################
                     # 特征相似度损失
-                    loss_ss = 0
-                    #########################################
-                    if len(ss_value_cam_mask_large_1) > 0:
-                        loss_ss = self.bce_loss(ss_value_cam_mask_large_1, torch.ones_like(ss_value_cam_mask_large_1))
-                    if len(ss_value_cam_mask_large_2) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_large_2, torch.ones_like(ss_value_cam_mask_large_2))
-                    if len(ss_value_cam_mask_large_12) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_large_12, torch.zeros_like(ss_value_cam_mask_large_12))
-                    if len(ss_value_cam_mask_large_22) > 0:
-                        loss_ss += self.bce_loss(ss_value_cam_mask_large_22, torch.zeros_like(ss_value_cam_mask_large_22))
-                    #########################################
-                    if loss_ss > 0:
-                        loss = loss + loss_ss
-                        avg_meter.update("loss_ss", loss_ss.item())
-                        pass
-                    ####################################################################################################
-
-                    ####################################################################################################
+                    loss_ss = self.mse_loss(result["our"]["d5_mask_2_to_1"], cam_mask_large_1) + \
+                              self.mse_loss(result["our"]["d5_mask_1_to_2"], cam_mask_large_2)
+                    loss = loss + loss_ss
+                    avg_meter.update("loss_ss", loss_ss.item())
+                    ##################################################
                     # 预测损失
                     loss_ce = self.ce_loss(result["ss"]["out_up_1"], mask1) + \
                               self.ce_loss(result["ss"]["out_up_2"], mask2)
@@ -132,10 +121,13 @@ class MyRunner(object):
                 pass
             ###########################################################################
 
-            Tools.print("[E:{:3d}/{:3d}] loss:{:.4f} class:{:.4f} ss:{:.4f} ce:{:.4f}".format(
-                epoch, self.config.epoch_num, avg_meter.get_results("loss"), avg_meter.get_results("loss_class"),
+            Tools.print("[E:{:3d}/{:3d}] loss:{:.4f} class:{:.4f} ss:{:.4f} ce:{:.4f} cam:{:.4f}".format(
+                epoch, self.config.epoch_num,
+                avg_meter.get_results("loss"),
+                avg_meter.get_results("loss_class"),
                 avg_meter.get_results("loss_ss") if self.config.has_ss else 0.0,
-                avg_meter.get_results("loss_ce") if self.config.has_ss else 0.0),
+                avg_meter.get_results("loss_ce") if self.config.has_ss else 0.0,
+                avg_meter.get_results("loss_cam") if self.config.has_ss and self.config.has_cam else 0.0),
                 txt_path=self.config.save_result_txt)
 
             ###########################################################################
@@ -342,7 +334,8 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "1, 2, 3"
+        # self.gpu_id = "1, 2, 3"
+        self.gpu_id = "0, 1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
@@ -375,22 +368,21 @@ class Config(object):
 
         self.num_classes = 20
         self.lr = 0.0001
-        self.epoch_num = 20
-        self.change_epoch = 12
+        self.epoch_num = 50
+        self.change_epoch = 30
         self.save_epoch_freq = 1
         self.eval_epoch_freq = 1
-        self.batch_size = 4 * len(self.gpu_id.split(","))
-        # self.batch_size = 8 * len(self.gpu_id.split(","))
 
-        # 图像大小
-        self.input_size = 352
-        # self.input_size = 224
+        # self.input_size = 352
+        # self.batch_size = 4 * len(self.gpu_id.split(","))
+        self.input_size = 224
+        self.batch_size = 8 * len(self.gpu_id.split(","))
 
         # 网络
         self.Net = DualNet
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "3"
+        run_name = "4"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, "DualNet", self.num_classes, self.epoch_num,
             self.batch_size, self.save_epoch_freq, self.input_size)

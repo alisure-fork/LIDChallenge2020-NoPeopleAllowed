@@ -639,7 +639,7 @@ class DualNet(nn.Module):
         feature_shape = feature_map.size()
         batch_min, _ = torch.min(feature_map.view((feature_shape[0], -1)), dim=-1, keepdim=True)
         batch_max, _ = torch.max(feature_map.view((feature_shape[0], -1)), dim=-1, keepdim=True)
-        norm = torch.div(feature_map.view((feature_shape[0], -1)) - batch_min, batch_max - batch_min)
+        norm = torch.div(feature_map.view((feature_shape[0], -1)) - batch_min, batch_max - batch_min + 1e-6)
         return norm.view(feature_shape)
 
     def __call__(self, *args, **kwargs):
