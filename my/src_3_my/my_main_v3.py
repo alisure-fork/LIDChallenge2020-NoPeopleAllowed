@@ -14,7 +14,7 @@ from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, Dataset
 sys.path.append("../../")
-from my_util_data2 import DatasetUtil
+from my_util_data2 import DatasetUtil, DataUtil
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
 from my_util_network import DeepLabV3Plus, deeplabv3_resnet50, deeplabv3plus_resnet101
 
@@ -168,7 +168,6 @@ class VOCRunner(object):
                     enumerate(data_loader), total=len(data_loader)):
                 assert len(image_info_list) == 1
 
-
                 # 标签
                 basename = os.path.basename(image_info_list[0])
                 final_name = os.path.join(final_save_path, basename.replace(".JPEG", ".png"))
@@ -193,9 +192,9 @@ class VOCRunner(object):
                 if save_path:
                     Image.open(image_info_list[0]).save(os.path.join(save_path, basename))
                     DataUtil.gray_to_color(np.asarray(targets[0], dtype=np.uint8)).save(
-                        os.path.join(save_path, basename.replace(".JPEG", "_l.png")))
+                        os.path.join(save_path, basename.replace(".jpg", "_l.png")))
                     DataUtil.gray_to_color(np.asarray(preds[0], dtype=np.uint8)).save(
-                        os.path.join(save_path, basename.replace(".JPEG", ".png")))
+                        os.path.join(save_path, basename.replace(".jpg", ".png")))
                     Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(final_name)
                     pass
                 pass
@@ -231,14 +230,15 @@ def train(config):
         data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=8)
         data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=8)
 
-        ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
-                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
-        ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
-                               save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+        voc_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        voc_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
+                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
         return
 
     if config.only_eval_ss:
-        voc_runner.eval_ss(epoch=0, model_file_name=os.path.join(config.ss_model_dir, "ss_final_20.pth"))
+        voc_runner.eval_ss(
+            epoch=0, model_file_name="../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90.pth")
         return
 
     if config.only_train_ss:
@@ -251,13 +251,15 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "1", "1, 2, 3"
-
         # 流程控制
-        self.only_train_ss = True  # 是否训练
-        self.only_inference_ss = False
-        self.only_eval_ss = False
+        self.is_supervised = False
+        self.only_train_ss = False  # 是否训练
+        self.only_inference_ss = True
+        self.only_eval_ss = True
         self.sampling = False
+
+        self.gpu_id_1, self.gpu_id_4 = "2", "1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
 
         self.ss_num_classes = 21
         self.ss_epoch_num = 100
@@ -272,13 +274,16 @@ class Config(object):
         self.output_stride = 16
 
         # 伪标签
-        self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
-        # self.train_label_path = None
+        if self.is_supervised:
+            self.train_label_path = None
+        else:
+            self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
 
         # 推理
-        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        self.model_file_name = "../../../WSS_Model_VOC/1_DeepLabV3PlusResNet50_21_20_18_1_513/ss_final_20.pth"
-        self.eval_save_path = "../../../WSS_Model_SS_EVAL/1_DeepLabV3PlusResNet50_21_20_18_1_513/ss_20_scales_7"
+        # self.scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
+        self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90.pth"
+        self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_5"
 
         # 网络
         self.Net = DeepLabV3Plus
@@ -324,11 +329,23 @@ Mean Acc: 0.867867
 FreqW Acc: 0.898047
 Mean IoU: 0.754826
 
+../../../WSS_Model_VOC/6_DeepLabV3PlusResNet101_21_100_24_5_513/ss_final_100.pth
+Overall Acc: 0.948508
+Mean Acc: 0.879520
+FreqW Acc: 0.907612
+Mean IoU: 0.776816
+
 ../../../WSS_Model_VOC/4_DeepLabV3PlusResNet50_21_100_18_5_513/ss_60.pth
 Overall Acc: 0.902363
 Mean Acc: 0.782532
 FreqW Acc: 0.830100
 Mean IoU: 0.651673
+
+../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90.pth
+Overall Acc: 0.905740
+Mean Acc: 0.792019
+FreqW Acc: 0.835543
+Mean IoU: 0.660259
 """
 
 
