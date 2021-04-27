@@ -346,6 +346,18 @@ Overall Acc: 0.905740
 Mean Acc: 0.792019
 FreqW Acc: 0.835543
 Mean IoU: 0.660259
+
+../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_5
+Overall Acc: 0.908860
+Mean Acc: 0.798223
+FreqW Acc: 0.840463
+Mean IoU: 0.668947
+
+../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_7
+Overall Acc: 0.910079
+Mean Acc: 0.784590
+FreqW Acc: 0.841293
+Mean IoU: 0.667627
 """
 
 
