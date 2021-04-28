@@ -15,7 +15,7 @@ from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, Dataset
 sys.path.append("../../")
-from my_util_network import DualNet, DualNet2
+from my_util_network import DualNet
 from my_util_data3 import DatasetUtil, DataUtil, MyTransform
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics, AverageMeter
 
@@ -50,7 +50,7 @@ class MyRunner(object):
             DatasetUtil.dataset_type_voc_train_dual, self.config.input_size, data_root=self.config.data_root_path,
             sampling=self.config.sampling, train_label_path=self.config.train_label_path)
         self.dataset_val = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_voc_val, self.config.input_size, data_root=self.config.data_root_path,
+            DatasetUtil.dataset_type_voc_val, self.config.input_size_val, data_root=self.config.data_root_path,
             sampling=self.config.sampling, return_image_info=True, train_label_path=self.config.train_label_path)
         self.data_loader_train = DataLoader(self.dataset_train, self.config.batch_size,
                                             shuffle=True, num_workers=16, drop_last=True)
@@ -350,8 +350,8 @@ class Config(object):
         # Eval
         self.model_pth = None
         self.model_eval_dir = None
-        self.model_pth = "../../../WSS_Model_My/DSS/1_DualNet_20_10_24_1_224/final_10.pth"
-        self.model_eval_dir = "../../../WSS_Model_My/DEval/1_DualNet_20_10_24_1_224"
+        self.model_pth = "../../../WSS_Model_My/DSS/5_DualNet_20_50_32_5_224/final_50.pth"
+        self.model_eval_dir = "../../../WSS_Model_My/DEval/5_DualNet_20_50_32_5_224"
 
         # Debug
         self.model_resume_pth = "../../../WSS_Model_My/DSS/4_DualNet_20_100_32_5_224/50.pth"
@@ -368,25 +368,26 @@ class Config(object):
 
         self.num_classes = 20
         self.lr = 0.001
-        self.epoch_num = 50
-        self.milestones = [30, 40]
+        self.epoch_num = 80
+        self.milestones = [40, 60]
         self.save_epoch_freq = 5
         self.eval_epoch_freq = 5
 
-        # self.input_size = 448
+        # self.input_size = 352
+        # self.input_size_val = 352
         # self.batch_size = 4 * len(self.gpu_id.split(","))
         self.input_size = 224
+        self.input_size_val = 224
         self.batch_size = 8 * len(self.gpu_id.split(","))
 
         # 网络
-        # self.Net, self.met_name = DualNet, "DualNet"
-        self.Net, self.met_name = DualNet2, "DualNet2"
+        self.Net, self.met_name = DualNet, "DualNet"
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "5"
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
+        run_name = "6"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}".format(
             run_name, self.met_name, self.num_classes, self.epoch_num,
-            self.batch_size, self.save_epoch_freq, self.input_size)
+            self.batch_size, self.save_epoch_freq, self.input_size, self.input_size_val)
         Tools.print(self.model_name)
 
         self.model_dir = "../../../WSS_Model_My/DSS/{}".format(self.model_name)
@@ -459,6 +460,28 @@ Overall Acc: 0.934976
 Mean Acc: 0.817085
 FreqW Acc: 0.882714
 Mean IoU: 0.719184
+"""
+
+
+"""
+../../../WSS_Model_My/DSS/5_DualNet_20_50_32_5_224/final_50.pth
+
+size=224
+2021-04-28 15:09:07 [E: 49/ 50] loss:1.4260 class:0.5682 ss:0.1374 ce:0.5259 cam:0.1945
+2021-04-28 15:09:47 [E: 50] val mae:0.0895 f1:0.8651 acc:0.8651
+2021-04-28 15:09:47 [E: 50] ss 
+Overall Acc: 0.936866
+Mean Acc: 0.844961
+FreqW Acc: 0.887663
+Mean IoU: 0.735821
+
+size=288
+2021-04-28 17:12:13 [E:  0] val mae:0.1115 f1:0.8493 acc:0.8493
+2021-04-28 17:12:13 [E:  0] ss 
+Overall Acc: 0.940172
+Mean Acc: 0.855026
+FreqW Acc: 0.894192
+Mean IoU: 0.745306
 """
 
 
