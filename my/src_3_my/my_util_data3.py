@@ -375,10 +375,6 @@ class MyTransform(object):
 
     @classmethod
     def transform_train_class(cls, input_size=224):
-        # transform_train = ExtCompose([ExtResize(size=(input_size, input_size)),
-        #                               ExtRandomHorizontalFlip(),
-        #                               ExtToTensor(),
-        #                               ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         transform_train = ExtCompose([ExtRandomScale((0.5, 2.0)),
                                       # ExtResize(size=input_size),
                                       ExtRandomCrop(size=input_size, pad_if_needed=True),

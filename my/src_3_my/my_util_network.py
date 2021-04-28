@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from alisuretool.Tools import Tools
 from torchvision.models import resnet
 from torch.utils.data import DataLoader, Dataset
+from deep_labv3plus_pytorch.network._deeplab import ASPP
 from torchvision.models._utils import IntermediateLayerGetter
 from deep_labv3plus_pytorch.network.modeling import deeplabv3plus_resnet50, deeplabv3plus_resnet101, deeplabv3plus_mobilenet
 from deep_labv3plus_pytorch.network.modeling import deeplabv3_resnet50, deeplabv3plus_resnet101, deeplabv3_mobilenet
@@ -646,3 +647,316 @@ class DualNet(nn.Module):
         return super().__call__(*args, **kwargs)
 
     pass
+
+
+class DualNetDeepLabHeadV3Plus(nn.Module):
+
+    def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate):
+        super().__init__()
+        self.project = nn.Sequential(nn.Conv2d(low_level_channels, 48, 1, bias=False),
+                                     nn.BatchNorm2d(48), nn.ReLU(inplace=True))
+
+        self.aspp = ASPP(in_channels, aspp_dilate)
+
+        self.classifier = nn.Sequential(nn.Conv2d(304, 256, 3, padding=1, bias=False), nn.BatchNorm2d(256),
+                                        nn.ReLU(inplace=True), nn.Conv2d(256, num_classes, 1))
+        self._init_weight()
+        pass
+
+    def forward(self, feature_out_1, feature_out_2, feature_low_level_1, feature_low_level_2, cam_1=None, cam_2=None):
+        low_level_feature_1 = self.project(feature_low_level_1)
+        low_level_feature_2 = self.project(feature_low_level_2)
+
+        output_feature_1 = self.aspp(feature_out_1)
+        output_feature_2 = self.aspp(feature_out_2)
+        output_feature_large_1 = self._up_to_target(output_feature_1, low_level_feature_1)
+        output_feature_large_2 = self._up_to_target(output_feature_2, feature_low_level_2)
+
+        output_feature_large_fusion_1 = torch.cat([low_level_feature_1, output_feature_large_1], dim=1)
+        output_feature_large_fusion_2 = torch.cat([low_level_feature_2, output_feature_large_2], dim=1)
+
+        out_1 = self.classifier(output_feature_large_fusion_1)
+        out_2 = self.classifier(output_feature_large_fusion_2)
+
+        #############################################################################################################
+        if cam_1 is not None and cam_2 is not None:
+            cam_large_1 = self._up_to_target(cam_1, output_feature_large_fusion_1)
+            cam_large_2 = self._up_to_target(cam_2, output_feature_large_fusion_2)
+
+            out_mask_1 = torch.sum(torch.sum(
+                cam_large_1 * output_feature_large_fusion_1, dim=2), dim=2) / (torch.sum(cam_large_1) + 1e-6)
+            out_mask_2 = torch.sum(torch.sum(
+                cam_large_2 * output_feature_large_fusion_2, dim=2), dim=2) / (torch.sum(cam_large_2) + 1e-6)
+            out_mask_4d_1 = torch.unsqueeze(torch.unsqueeze(
+                out_mask_1, dim=-1), dim=-1).expand_as(output_feature_large_fusion_2)
+            out_mask_4d_2 = torch.unsqueeze(torch.unsqueeze(
+                out_mask_2, dim=-1), dim=-1).expand_as(output_feature_large_fusion_1)
+            out_mask_2_to_1 = torch.cosine_similarity(out_mask_4d_2, output_feature_large_fusion_1, dim=1)
+            out_mask_1_to_2 = torch.cosine_similarity(out_mask_4d_1, output_feature_large_fusion_2, dim=1)
+
+            result_our = {"cam_large_1": cam_large_1, "cam_large_2": cam_large_2,
+                          "d5_mask_1_to_2": out_mask_2_to_1, "d5_mask_2_to_1": out_mask_1_to_2}
+            return out_1, out_2, result_our
+        #############################################################################################################
+        return out_1, out_2, None
+
+    def forward_inference(self, feature_out, feature_low_level):
+        low_level_feature = self.project(feature_low_level)
+        output_feature = self.aspp(feature_out)
+        output_feature_large = self._up_to_target(output_feature, low_level_feature)
+        output_feature_large_fusion = torch.cat([low_level_feature, output_feature_large], dim=1)
+        out = self.classifier(output_feature_large_fusion)
+        return out
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+                pass
+            pass
+        pass
+
+    @staticmethod
+    def _up_to_target(source, target, mode="bilinear"):
+        if source.size()[2] != target.size()[2] or source.size()[3] != target.size()[3]:
+            align_corners = True if mode == "nearest" else False
+            source = torch.nn.functional.interpolate(
+                source, size=[target.size()[2], target.size()[3]], mode=mode, align_corners=align_corners)
+            pass
+        return source
+
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+    pass
+
+
+class DualNetCAMClassifier(nn.Module):
+
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        # self.class_c1 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 2, 1, bias=False),
+        #                               nn.BatchNorm2d(in_channels // 2), nn.ReLU(inplace=True))
+        # self.class_c2 = nn.Sequential(nn.Conv2d(in_channels // 2, in_channels // 4, 1, bias=False),
+        #                               nn.BatchNorm2d(in_channels // 4), nn.ReLU(inplace=True))
+
+        self.class_c1 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 4, 1, bias=False),
+                                      nn.BatchNorm2d(in_channels // 4), nn.ReLU(inplace=True))
+
+        self.class_l1 = nn.Linear(in_channels // 4, num_classes)
+        self._init_weight()
+        pass
+
+    def forward(self, feature):
+        # class_feature = self.class_c2(self.class_c1(feature))  # (512, 10)
+        class_feature = self.class_c1(feature)  # (512, 10)
+        class_1x1 = F.adaptive_avg_pool2d(class_feature, output_size=(1, 1)).view((class_feature.size()[0], -1))
+        class_logits = self.class_l1(class_1x1)
+        return class_feature, class_logits
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+                pass
+            pass
+        pass
+
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+    pass
+
+
+class DualNetDeepLabV3PlusResNet50(nn.Module):
+
+    def __init__(self, num_classes, output_stride):
+        super().__init__()
+        self.num_classes = num_classes
+
+        backbone = resnet.__dict__["resnet50"](pretrained=True, replace_stride_with_dilation=[
+            False, True, True] if output_stride == 8 else [False, False, True])
+
+        self.backbone = IntermediateLayerGetter(backbone, return_layers={'layer4': 'out', 'layer1': 'low_level'})
+        self.cam_classifier = DualNetCAMClassifier(2048, num_classes=self.num_classes)
+        self.classifier = DualNetDeepLabHeadV3Plus(
+            2048, 256, num_classes, aspp_dilate=[12, 24, 36] if output_stride == 8 else [6, 12, 18])
+        pass
+
+    def forward(self, x1, x2, pair_labels, has_class=False, has_cam=False, has_ss=False):
+        result = {}
+
+        ###########################################################################################################
+        # -------------Encoder-------------
+        feature_1 = self.backbone(x1)  # (64, 160), (256, 80), (512, 40), (1024, 20), (2048, 10)
+        feature_2 = self.backbone(x2)  # (64, 160), (256, 80), (512, 40), (1024, 20), (2048, 10)
+        # ###########################################################################################################
+
+        cam_norm_1, cam_norm_2 = None, None
+
+        ###########################################################################################################
+        if has_class:
+            class_feature_1, class_logits_1 = self.cam_classifier(feature=feature_1['out'])
+            class_feature_2, class_logits_2 = self.cam_classifier(feature=feature_2['out'])
+            result["class_logits"] = {"x1": class_logits_1, "x2": class_logits_2}
+
+            if has_cam:
+                cam_1 = self._cluster_activation_map(pair_labels, class_feature_1, self.cam_classifier.class_l1.weight)  # 簇激活图
+                cam_2 = self._cluster_activation_map(pair_labels, class_feature_2, self.cam_classifier.class_l1.weight)  # 簇激活图
+                cam_norm_1 = self._feature_norm(cam_1)
+                cam_norm_2 = self._feature_norm(cam_2)
+
+                result["cam"] = {"cam_1": cam_1, "cam_2": cam_2,
+                                 "cam_norm_1": cam_norm_1, "cam_norm_2": cam_norm_2,
+                                 "cam_norm_large_1": self._up_to_target(cam_norm_1, x1),
+                                 "cam_norm_large_2": self._up_to_target(cam_norm_2, x2)}
+                pass
+
+            pass
+        ###########################################################################################################
+
+        ###########################################################################################################
+        if has_ss:
+            out_1, out_2, our = self.classifier(feature_1['out'], feature_2['out'], feature_1['low_level'],
+                                                feature_2['low_level'], cam_norm_1, cam_norm_2)
+            if our is not None:
+                for key in our:
+                    if len(our[key].shape) == 4:
+                        our[key] = self._up_to_target(our[key], x1)
+                    else:
+                        our[key] = torch.squeeze(self._up_to_target(torch.unsqueeze(our[key], dim=1), x1), dim=1)
+                    pass
+                result["our"] = our
+                pass
+
+            out_softmax_1, out_softmax_2 = torch.softmax(out_1, dim=0), torch.softmax(out_2, dim=0)
+            out_up_1, out_up_2 = self._up_to_target(out_1, x1), self._up_to_target(out_2, x2)
+            out_up_softmax_1, out_up_softmax_2 = torch.softmax(out_up_1, dim=0), torch.softmax(out_up_2, dim=0)
+            result["ss"] = {"out_1": out_1, "out_2": out_2,
+                            "out_softmax_1": out_softmax_1, "out_softmax_2": out_softmax_2,
+                            "out_up_1": out_up_1, "out_up_2": out_up_2,
+                            "out_up_softmax_1": out_up_softmax_1, "out_up_softmax_2": out_up_softmax_2}
+            pass
+        # ###########################################################################################################
+
+        return result
+
+    def forward_inference(self, x, has_class=False, has_cam=False, has_ss=False):
+        result = {}
+
+        # -------------Encoder-------------
+        feature = self.backbone(x)
+
+        # -------------Class-------------
+        if has_class:
+            class_feature, class_logits = self.cam_classifier(feature=feature['out'])
+            result["class_logits"] = class_logits
+
+            if has_cam:
+                _, top_k_index = torch.topk(class_logits, 1, 1)
+                pred_labels = [int(one[0]) for one in top_k_index]
+                cam = self._cluster_activation_map(pred_labels, class_feature, self.cam_classifier.class_l1.weight)  # 簇激活图
+
+                cam_norm = self._feature_norm(cam)
+                cam_norm_large = self._up_to_target(cam_norm, x)
+
+                result["cam"] = {"cam": cam, "cam_norm": cam_norm, "cam_norm_large": cam_norm_large}
+                pass
+
+            pass
+
+        # -------------Decoder-------------
+        if has_ss:
+            out = self.classifier.forward_inference(feature['out'], feature['low_level'])
+            out_softmax = torch.softmax(out, dim=0)
+            out_up = self._up_to_target(out, x)
+            out_up_softmax = torch.softmax(out_up, dim=0)
+
+            return_result = {"out": out, "out_softmax": out_softmax,
+                             "out_up": out_up, "out_up_softmax": out_up_softmax}
+            result["ss"] = return_result
+            pass
+
+        return result
+
+    @staticmethod
+    def _cluster_activation_map(pair_labels, class_feature, weight_softmax):
+        bz, nc, h, w = class_feature.shape
+
+        cam_list = []
+        for i in range(bz):
+            cam_weight = weight_softmax[pair_labels[i]]
+            cam_weight = cam_weight.view(nc, 1, 1).expand_as(class_feature[i])
+            cam = torch.sum(torch.mul(cam_weight, class_feature[i]), dim=0, keepdim=True)
+            cam[cam < 0] = 0
+            cam_list.append(torch.unsqueeze(cam, 0))
+            pass
+
+        return torch.cat(cam_list)
+
+    @staticmethod
+    def _cluster_activation_map_old(pair_labels, class_feature, weight_softmax):
+        bz, nc, h, w = class_feature.shape
+
+        cam_list = []
+        for i in range(bz):
+            cam_weight = weight_softmax[pair_labels[i]]
+            cam_weight = cam_weight.view(nc, 1, 1).expand_as(class_feature[i])
+            cam = torch.sum(torch.mul(cam_weight, class_feature[i]), dim=0, keepdim=True)
+            cam_list.append(torch.unsqueeze(cam, 0))
+            pass
+        return torch.cat(cam_list)
+
+    @staticmethod
+    def _up_to_target(source, target, mode="bilinear"):
+        if source.size()[2] != target.size()[2] or source.size()[3] != target.size()[3]:
+            align_corners = True if mode == "nearest" else False
+            source = torch.nn.functional.interpolate(
+                source, size=[target.size()[2], target.size()[3]], mode=mode, align_corners=align_corners)
+            pass
+        return source
+
+    @staticmethod
+    def _feature_norm(feature_map):
+        feature_shape = feature_map.size()
+        batch_min, _ = torch.min(feature_map.view((feature_shape[0], -1)), dim=-1, keepdim=True)
+        batch_max, _ = torch.max(feature_map.view((feature_shape[0], -1)), dim=-1, keepdim=True)
+        norm = torch.div(feature_map.view((feature_shape[0], -1)) - batch_min, batch_max - batch_min + 1e-6)
+        return norm.view(feature_shape)
+
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+    pass
+
+
+class DualNetDeepLabV3Plus(nn.Module):
+
+    def __init__(self, num_classes, output_stride=8):
+        super().__init__()
+        self.model = DualNetDeepLabV3PlusResNet50(num_classes=num_classes, output_stride=output_stride)
+        pass
+
+    def forward(self, x1, x2, pair_labels, has_class=False, has_cam=False, has_ss=False):
+        out = self.model(x1, x2, pair_labels, has_class=has_class, has_cam=has_cam, has_ss=has_ss)
+        return out
+
+    def forward_inference(self, x, has_class=False, has_cam=False, has_ss=False):
+        out = self.model.forward_inference(x, has_class=has_class, has_cam=has_cam, has_ss=has_ss)
+        return out
+
+    def get_params_groups(self):
+        return list(self.model.backbone.parameters()), list(
+            self.model.cam_classifier.parameters()), list(self.model.classifier.parameters())
+
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+    pass
+
