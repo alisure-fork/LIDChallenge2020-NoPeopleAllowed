@@ -15,7 +15,7 @@ from alisuretool.Tools import Tools
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, Dataset
 sys.path.append("../../")
-from my_util_network import DualNet
+from my_util_network import DualNet, DualNet2
 from my_util_data3 import DatasetUtil, DataUtil, MyTransform
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics, AverageMeter
 
@@ -41,8 +41,8 @@ class MyRunner(object):
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.config.milestones, gamma=0.1)
 
         # Loss
-        self.bce_with_logits_loss = nn.BCEWithLogitsLoss().cuda()
         self.mse_loss = nn.MSELoss().cuda()
+        self.bce_loss = nn.BCEWithLogitsLoss().cuda()
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').cuda()
 
         # Data
@@ -89,8 +89,8 @@ class MyRunner(object):
                 ####################################################################################################
                 # 分类损失
                 class_logits = result["class_logits"]
-                loss_class = 5 * (self.bce_with_logits_loss(class_logits["x1"], label1) +
-                                  self.bce_with_logits_loss(class_logits["x2"], label2))
+                loss_class = 5 * (self.bce_loss(class_logits["x1"], label1) +
+                                  self.bce_loss(class_logits["x2"], label2))
                 loss = loss_class
                 avg_meter.update("loss_class", loss_class.item())
                 ####################################################################################################
@@ -334,8 +334,8 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id = "1, 2, 3"
-        self.gpu_id = "0, 1, 2, 3"
+        self.gpu_id = "1, 2, 3"
+        # self.gpu_id = "0, 1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
@@ -354,7 +354,7 @@ class Config(object):
         self.model_eval_dir = "../../../WSS_Model_My/DEval/1_DualNet_20_10_24_1_224"
 
         # Debug
-        self.model_resume_pth = "../../../WSS_Model_My/DSS/3_DualNet_20_20_24_1_224/17.pth"
+        self.model_resume_pth = "../../../WSS_Model_My/DSS/4_DualNet_20_100_32_5_224/50.pth"
 
         self.has_class = True
         self.has_cam = True
@@ -368,23 +368,24 @@ class Config(object):
 
         self.num_classes = 20
         self.lr = 0.001
-        self.epoch_num = 100
-        self.milestones = [50, 80]
+        self.epoch_num = 50
+        self.milestones = [30, 40]
         self.save_epoch_freq = 5
         self.eval_epoch_freq = 5
 
-        # self.input_size = 352
+        # self.input_size = 448
         # self.batch_size = 4 * len(self.gpu_id.split(","))
         self.input_size = 224
         self.batch_size = 8 * len(self.gpu_id.split(","))
 
         # 网络
-        self.Net = DualNet
+        # self.Net, self.met_name = DualNet, "DualNet"
+        self.Net, self.met_name = DualNet2, "DualNet2"
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "4"
+        run_name = "5"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
-            run_name, "DualNet", self.num_classes, self.epoch_num,
+            run_name, self.met_name, self.num_classes, self.epoch_num,
             self.batch_size, self.save_epoch_freq, self.input_size)
         Tools.print(self.model_name)
 
@@ -435,6 +436,29 @@ Overall Acc: 0.931821
 Mean Acc: 0.816860
 FreqW Acc: 0.878234
 Mean IoU: 0.707803
+"""
+
+
+"""
+SGD
+
+../../../WSS_Model_My/DSS/4_DualNet_20_100_32_5_224/50.pth
+2021-04-28 04:49:36 [E: 50/100] loss:0.2320 class:0.0089 ss:0.0359 ce:0.0826 cam:0.1047
+2021-04-28 04:50:16 [E: 50] val mae:0.0888 f1:0.8537 acc:0.8537
+2021-04-28 04:50:16 [E: 50] ss
+Overall Acc: 0.932614
+Mean Acc: 0.807302
+FreqW Acc: 0.878509
+Mean IoU: 0.711477
+
+../../../WSS_Model_My/DSS/4_DualNet_20_100_24_5_224/85.pth
+2021-04-28 09:47:55 [E: 85/100] loss:0.1927 class:0.0054 ss:0.0269 ce:0.0622 cam:0.0982
+2021-04-28 09:48:41 [E: 85] val mae:0.0819 f1:0.8692 acc:0.8692
+2021-04-28 09:48:41 [E: 85] ss 
+Overall Acc: 0.934976
+Mean Acc: 0.817085
+FreqW Acc: 0.882714
+Mean IoU: 0.719184
 """
 
 

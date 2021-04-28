@@ -58,6 +58,20 @@ class ExtCenterCrop(object):
     pass
 
 
+class ExtRandomScale(object):
+    def __init__(self, scale_range, interpolation=Image.BILINEAR):
+        self.scale_range = scale_range
+        self.interpolation = interpolation
+
+    def __call__(self, img, lbl):
+        assert img.size == lbl.size
+        scale = random.uniform(self.scale_range[0], self.scale_range[1])
+        target_size = (int(img.size[1] * scale), int(img.size[0] * scale))
+        return F.resize(img, target_size, self.interpolation), F.resize(lbl, target_size, Image.NEAREST)
+
+    pass
+
+
 class ExtRandomHorizontalFlip(object):
 
     def __init__(self, p=0.5):
@@ -361,7 +375,13 @@ class MyTransform(object):
 
     @classmethod
     def transform_train_class(cls, input_size=224):
-        transform_train = ExtCompose([ExtResize(size=(input_size, input_size)),
+        # transform_train = ExtCompose([ExtResize(size=(input_size, input_size)),
+        #                               ExtRandomHorizontalFlip(),
+        #                               ExtToTensor(),
+        #                               ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transform_train = ExtCompose([ExtRandomScale((0.5, 2.0)),
+                                      # ExtResize(size=input_size),
+                                      ExtRandomCrop(size=input_size, pad_if_needed=True),
                                       ExtRandomHorizontalFlip(),
                                       ExtToTensor(),
                                       ExtNormalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
@@ -459,6 +479,9 @@ class VOCSegmentationDual(Dataset):
         image_2, mask_2 = self.transform(image_2, mask_2)
         label_2 = DataUtil.one_hot(image_label=label_class_2, num_classes=self.num_classes)
 
+        if torch.sum(mask == pair_label_class + 1) <= 0 or torch.sum(mask_2 == pair_label_class + 1) <= 0:
+            return self.__getitem__(idx)
+
         if self.return_image_info:
             return pair_label_class, [image, image_2], [mask, mask_2], \
                    [label, label_2], [image_path, image_path_2], [label_path, label_path_2]
@@ -508,4 +531,24 @@ class DatasetUtil(object):
 
 
 if __name__ == '__main__':
+
+
+    def get_data_root_path():
+        import platform
+        if "Linux" in platform.platform():
+            data_root = '/mnt/4T/Data/data/SS/voc'
+            if not os.path.isdir(data_root):
+                data_root = "/media/ubuntu/4T/ALISURE/Data/SS/voc"
+        else:
+            data_root = "F:\\data\\SS\\voc"
+        return data_root
+
+
+    data_info = DataUtil.get_voc_info(data_root=get_data_root_path(), split="train_aug", train_label_path=None)
+    data_info = data_info[::20]
+    label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+
+    transform_train, _ = MyTransform.transform_train_class(input_size=224)
+    voc = VOCSegmentationDual(label_image_path, transform=transform_train, return_image_info=False)
+    voc.__getitem__(1)
     pass
