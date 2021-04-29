@@ -786,7 +786,7 @@ class DualNetDeepLabV3PlusResNet50(nn.Module):
         self.backbone = IntermediateLayerGetter(backbone, return_layers={'layer4': 'out', 'layer1': 'low_level'})
         self.cam_classifier = DualNetCAMClassifier(2048, num_classes=self.num_classes)
         self.classifier = DualNetDeepLabHeadV3Plus(
-            2048, 256, num_classes, aspp_dilate=[12, 24, 36] if output_stride == 8 else [6, 12, 18])
+            2048, 256, num_classes + 1, aspp_dilate=[12, 24, 36] if output_stride == 8 else [6, 12, 18])
         pass
 
     def forward(self, x1, x2, pair_labels, has_class=False, has_cam=False, has_ss=False):

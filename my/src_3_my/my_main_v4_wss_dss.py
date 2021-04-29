@@ -144,9 +144,9 @@ class MyRunner(object):
                 epoch, self.config.epoch_num,
                 avg_meter.get_results("loss"),
                 avg_meter.get_results("loss_class") if self.config.has_class else 0.0,
-                avg_meter.get_results("loss_ss") if self.config.has_ss else 0.0,
+                avg_meter.get_results("loss_ss") if self.config.has_cam else 0.0,
                 avg_meter.get_results("loss_ce") if self.config.has_ss else 0.0,
-                avg_meter.get_results("loss_cam") if self.config.has_ss and self.config.has_cam else 0.0),
+                avg_meter.get_results("loss_cam") if self.config.has_cam else 0.0),
                 txt_path=self.config.save_result_txt)
 
             ###########################################################################
@@ -296,9 +296,11 @@ class MyRunner(object):
                 pass
             pass
 
-        Tools.print("[E:{:3d}] val mae:{:.4f} f1:{:.4f} acc:{:.4f}".format(
-            epoch, avg_meter.get_results("mae"), avg_meter.get_results("f1"),
-            avg_meter.get_results("acc")), txt_path=self.config.save_result_txt)
+        if self.config.has_class:
+            Tools.print("[E:{:3d}] val mae:{:.4f} f1:{:.4f} acc:{:.4f}".format(
+                epoch, avg_meter.get_results("mae"), avg_meter.get_results("f1"),
+                avg_meter.get_results("acc")), txt_path=self.config.save_result_txt)
+            pass
         if self.config.has_ss:
             Tools.print("[E:{:3d}] ss {}".format(epoch, ss_meter.to_str(ss_meter.get_results())))
             pass
@@ -348,8 +350,8 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id = "1, 2, 3"
-        self.gpu_id = "0, 1, 2, 3"
+        self.gpu_id = "1, 2, 3"
+        # self.gpu_id = "0, 1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
@@ -364,8 +366,8 @@ class Config(object):
         # Eval
         self.model_pth = None
         self.model_eval_dir = None
-        self.model_pth = "../../../WSS_Model_My/DSS/5_DualNet_20_50_32_5_224/final_50.pth"
-        self.model_eval_dir = "../../../WSS_Model_My/DEval/5_DualNet_20_50_32_5_224"
+        self.model_pth = "../../../WSS_Model_My/DSS/7_DualNetDeepLabV3Plus_20_80_12_5_513_16/60.pth"
+        self.model_eval_dir = "../../../WSS_Model_My/DEval/7_DualNetDeepLabV3Plus_20_80_12_5_513_16"
 
         # Debug
         self.model_resume_pth = "../../../WSS_Model_My/DSS/4_DualNet_20_100_32_5_224/50.pth"
@@ -378,10 +380,10 @@ class Config(object):
         # self.input_size = 513
         # self.batch_size_one = 4
         self.input_size = 352
-        self.batch_size_one = 12
+        self.batch_size_one = 8
 
-        # self.cuda_balance = False
-        self.cuda_balance = True
+        self.cuda_balance = False
+        # self.cuda_balance = True
         if self.cuda_balance:
             self.batch_size = self.batch_size_one * (len(self.gpu_id.split(",")) - 1)
         else:
@@ -391,13 +393,14 @@ class Config(object):
         self.lr = 0.001
         self.epoch_num = 80
         self.milestones = [40, 60]
-        self.save_epoch_freq = 5
-        self.eval_epoch_freq = 5
+        self.save_epoch_freq = 2
+        self.eval_epoch_freq = 2
 
         # 伪标签
         if self.is_supervised:
             self.train_label_path = None
         else:
+            # self.train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
             self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
             pass
 
@@ -405,7 +408,7 @@ class Config(object):
         self.Net, self.met_name = DualNetDeepLabV3Plus, "DualNetDeepLabV3Plus"
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "7"
+        run_name = "8"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}".format(
             run_name, self.met_name, self.num_classes, self.epoch_num,
             self.batch_size, self.save_epoch_freq, self.input_size, self.output_stride)
