@@ -3,6 +3,7 @@ import torch
 import random
 import numpy as np
 import torch.nn as nn
+from pamr import PAMR
 from torchvision import models
 import torch.nn.functional as F
 from alisuretool.Tools import Tools
@@ -787,6 +788,8 @@ class DualNetDeepLabV3PlusResNet50(nn.Module):
         self.cam_classifier = DualNetCAMClassifier(2048, num_classes=self.num_classes)
         self.classifier = DualNetDeepLabHeadV3Plus(
             2048, 256, num_classes + 1, aspp_dilate=[12, 24, 36] if output_stride == 8 else [6, 12, 18])
+
+        self.aff = PAMR(10, [1, 2, 4, 8, 12, 24])
         pass
 
     def forward(self, x1, x2, pair_labels, has_class=False, has_cam=False, has_ss=False):
@@ -811,11 +814,14 @@ class DualNetDeepLabV3PlusResNet50(nn.Module):
                 cam_2 = self._cluster_activation_map(pair_labels, class_feature_2, self.cam_classifier.class_l1.weight)  # 簇激活图
                 cam_norm_1 = self._feature_norm(cam_1)
                 cam_norm_2 = self._feature_norm(cam_2)
+                cam_norm_1 = self._up_to_target(cam_norm_1, x1)
+                cam_norm_2 = self._up_to_target(cam_norm_2, x2)
+                cam_norm_aff_1 = self.aff(x1, cam_norm_1)
+                cam_norm_aff_2 = self.aff(x2, cam_norm_2)
 
                 result["cam"] = {"cam_1": cam_1, "cam_2": cam_2,
                                  "cam_norm_1": cam_norm_1, "cam_norm_2": cam_norm_2,
-                                 "cam_norm_large_1": self._up_to_target(cam_norm_1, x1),
-                                 "cam_norm_large_2": self._up_to_target(cam_norm_2, x2)}
+                                 "cam_norm_aff_1": cam_norm_aff_1, "cam_norm_aff_2": cam_norm_aff_2}
                 pass
 
             pass
