@@ -350,15 +350,15 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id = "1, 2, 3"
-        # self.gpu_id = "0, 1, 2, 3"
+        # self.gpu_id = "1, 2, 3"
+        self.gpu_id = "0, 1, 2, 3"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id)
 
         # 流程控制
         self.only_train = True  # 是否训练
         self.only_eval = False
         self.only_train_debug = False
-        self.is_supervised = True
+        self.is_supervised = False
 
         # Train
         self.sampling = False
@@ -366,11 +366,11 @@ class Config(object):
         # Eval
         self.model_pth = None
         self.model_eval_dir = None
-        self.model_pth = "../../../WSS_Model_My/DSS/7_DualNetDeepLabV3Plus_20_80_12_5_513_16/60.pth"
-        self.model_eval_dir = "../../../WSS_Model_My/DEval/7_DualNetDeepLabV3Plus_20_80_12_5_513_16"
+        self.model_pth = "../../../WSS_Model_My/DSS/8_DualNetDeepLabV3Plus_20_80_16_2_513_16/final_80.pth"
+        self.model_eval_dir = "../../../WSS_Model_My/DEval/8_DualNetDeepLabV3Plus_20_80_16_2_513_16"
 
         # Debug
-        self.model_resume_pth = "../../../WSS_Model_My/DSS/4_DualNet_20_100_32_5_224/50.pth"
+        self.model_resume_pth = "../../../WSS_Model_My/DSS/10_DualNetDeepLabV3Plus_20_80_32_2_352_16/final_80.pth"
 
         self.has_class = True
         self.has_cam = True
@@ -400,15 +400,15 @@ class Config(object):
         if self.is_supervised:
             self.train_label_path = None
         else:
-            # self.train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
-            self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
+            self.train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
+            # self.train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
             pass
 
         # 网络
         self.Net, self.met_name = DualNetDeepLabV3Plus, "DualNetDeepLabV3Plus"
         self.data_root_path = self.get_data_root_path()
 
-        run_name = "8"
+        run_name = "11"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}".format(
             run_name, self.met_name, self.num_classes, self.epoch_num,
             self.batch_size, self.save_epoch_freq, self.input_size, self.output_stride)
@@ -432,7 +432,33 @@ class Config(object):
 
 
 """
+监督
+2021-04-30 17:01:19 Save Model to ../../../WSS_Model_My/DSS/9_DualNetDeepLabV3Plus_20_80_24_2_352_16/54.pth
+2021-04-30 17:01:18 [E: 54/ 80] loss:0.2252 class:0.0000 ss:0.0000 ce:0.2252 cam:0.0000
+2021-04-30 17:01:59 [E: 54] ss 
+Overall Acc: 0.944535
+Mean Acc: 0.851176
+FreqW Acc: 0.899744
+Mean IoU: 0.761747
 
+
+2021-04-30 03:38:30 Save Model to ../../../WSS_Model_My/DSS/8_DualNetDeepLabV3Plus_20_80_24_2_352_16/final_80.pth
+2021-04-30 03:38:30 [E: 79/ 80] loss:0.7738 class:0.1487 ss:0.2449 ce:0.2338 cam:0.1464
+2021-04-30 03:39:15 [E: 80] val mae:0.0734 f1:0.8738 acc:0.8738
+2021-04-30 03:39:15 [E: 80] ss 
+Overall Acc: 0.942644
+Mean Acc: 0.851856
+FreqW Acc: 0.896954
+Mean IoU: 0.755658
+
+2021-05-01 03:57:43 Save Model to ../../../WSS_Model_My/DSS/10_DualNetDeepLabV3Plus_20_80_32_2_352_16/final_80.pth
+2021-05-01 03:57:43 [E: 79/ 80] loss:0.6939 class:0.1886 ss:0.1074 ce:0.2427 cam:0.1553
+2021-05-01 03:58:20 [E: 80] val mae:0.0722 f1:0.8742 acc:0.8742
+2021-05-01 03:58:20 [E: 80] ss 
+Overall Acc: 0.944283
+Mean Acc: 0.851913
+FreqW Acc: 0.899665
+Mean IoU: 0.759638
 """
 
 

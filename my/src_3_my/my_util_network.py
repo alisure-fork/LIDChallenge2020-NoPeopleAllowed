@@ -695,7 +695,7 @@ class DualNetDeepLabHeadV3Plus(nn.Module):
             out_mask_1_to_2 = torch.cosine_similarity(out_mask_4d_1, output_feature_large_fusion_2, dim=1)
 
             result_our = {"cam_large_1": cam_large_1, "cam_large_2": cam_large_2,
-                          "d5_mask_1_to_2": out_mask_2_to_1, "d5_mask_2_to_1": out_mask_1_to_2}
+                          "d5_mask_1_to_2": out_mask_1_to_2, "d5_mask_2_to_1": out_mask_2_to_1}
             return out_1, out_2, result_our
         #############################################################################################################
         return out_1, out_2, None
