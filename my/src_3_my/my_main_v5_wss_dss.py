@@ -105,11 +105,11 @@ class MyRunner(object):
                 # 激活图损失, 特征相似度损失
                 if self.config.has_cam:
                     where_1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() < 1e-6) |
-                                            (result["cam"]["cam_norm_aff_1"].detach() > 0.5), dim=1)
+                                            (result["cam"]["cam_norm_aff_1"].detach() > self.config.a), dim=1)
                     where_2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() < 1e-6) |
-                                            (result["cam"]["cam_norm_aff_2"].detach() > 0.5), dim=1)
-                    mask_where_1 = torch.squeeze(result["cam"]["cam_norm_aff_1"].detach() > 0.1, dim=1)
-                    mask_where_2 = torch.squeeze(result["cam"]["cam_norm_aff_2"].detach() > 0.1, dim=1)
+                                            (result["cam"]["cam_norm_aff_2"].detach() > self.config.a), dim=1)
+                    mask_where_1 = torch.squeeze(result["cam"]["cam_norm_aff_1"].detach() > self.config.b, dim=1)
+                    mask_where_2 = torch.squeeze(result["cam"]["cam_norm_aff_2"].detach() > self.config.b, dim=1)
 
                     cam_mask_large_1 = torch.zeros_like(result["our"]["d5_mask_2_to_1"])
                     cam_mask_large_1[mask_where_1] = 1
@@ -135,7 +135,7 @@ class MyRunner(object):
                 if self.config.has_ss:
                     final_mask1 = torch.zeros_like(mask1) + 255
                     black1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() < 1e-6), dim=1)
-                    white1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() > 0.5), dim=1)
+                    white1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() > self.config.a), dim=1)
                     final_mask1[black1] = 0
                     final_mask1[white1] = 1
                     final_mask1 = final_mask1 * (pair_labels + 1).view(-1, 1, 1).expand_as(final_mask1)
@@ -143,7 +143,7 @@ class MyRunner(object):
 
                     final_mask2 = torch.zeros_like(mask2) + 255
                     black2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() < 1e-6), dim=1)
-                    white2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() > 0.5), dim=1)
+                    white2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() > self.config.a), dim=1)
                     final_mask2[black2] = 0
                     final_mask2[white2] = 1
                     final_mask2 = final_mask2 * (pair_labels + 1).view(-1, 1, 1).expand_as(final_mask2)
@@ -229,8 +229,7 @@ class MyRunner(object):
         ###########################################################################
         pass
 
-    @staticmethod
-    def vis(x1, x2, mask1, mask2, pair_labels, result, i=0):
+    def vis(self, x1, x2, mask1, mask2, pair_labels, result, i=0):
         MyTransform.transform_un_normalize()(x1[i].detach().cpu()).save("1.jpg")
         MyTransform.transform_un_normalize()(x2[i].detach().cpu()).save("2.jpg")
         DataUtil.gray_to_color(np.asarray(mask1[i].detach().cpu().numpy(), dtype=np.uint8)).save("1.png")
@@ -257,12 +256,12 @@ class MyRunner(object):
 
         cam_mask_large_1 = torch.zeros_like(result["our"]["cam_large_1"]) + 255
         cam_mask_large_1[result["cam"]["cam_norm_aff_1"] < 1e-6] = 0
-        cam_mask_large_1[result["cam"]["cam_norm_aff_1"] > 0.5] = 1
+        cam_mask_large_1[result["cam"]["cam_norm_aff_1"] > self.config.a] = 1
         cam_mask_large_1 = cam_mask_large_1[i][0].detach().cpu().numpy()
         DataUtil.gray_to_color(np.asarray(cam_mask_large_1, dtype=np.uint8)).save("1_mask_hard.png")
         cam_mask_large_2 = torch.zeros_like(result["our"]["cam_large_2"]) + 255
         cam_mask_large_2[result["cam"]["cam_norm_aff_2"] < 1e-6] = 0
-        cam_mask_large_2[result["cam"]["cam_norm_aff_2"] > 0.5] = 1
+        cam_mask_large_2[result["cam"]["cam_norm_aff_2"] > self.config.a] = 1
         cam_mask_large_2 = cam_mask_large_2[i][0].detach().cpu().numpy()
         DataUtil.gray_to_color(np.asarray(cam_mask_large_2, dtype=np.uint8)).save("2_mask_hard.png")
 
@@ -282,7 +281,7 @@ class MyRunner(object):
 
         final_mask1 = torch.zeros_like(mask1) + 255
         black1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() < 1e-6), dim=1)
-        white1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() > 0.5), dim=1)
+        white1 = torch.squeeze((result["cam"]["cam_norm_aff_1"].detach() > self.config.a), dim=1)
         final_mask1[black1] = 0
         final_mask1[white1] = 1
         final_mask1 = final_mask1 * (pair_labels + 1).view(-1, 1, 1).expand_as(final_mask1)
@@ -290,7 +289,7 @@ class MyRunner(object):
 
         final_mask2 = torch.zeros_like(mask2) + 255
         black2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() < 1e-6), dim=1)
-        white2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() > 0.5), dim=1)
+        white2 = torch.squeeze((result["cam"]["cam_norm_aff_2"].detach() > self.config.a), dim=1)
         final_mask2[black2] = 0
         final_mask2[white2] = 1
         final_mask2 = final_mask2 * (pair_labels + 1).view(-1, 1, 1).expand_as(final_mask2)
@@ -426,11 +425,13 @@ class Config(object):
         self.model_eval_dir = "../../../WSS_Model_My/DEval/8_DualNetDeepLabV3Plus_20_80_16_2_513_16"
 
         # Debug
-        self.model_resume_pth = "../../../WSS_Model_My/DSS/12_DualNetDeepLabV3Plus_20_80_32_2_352_16/10.pth"
+        self.model_resume_pth = "../../../WSS_Model_My/DSS/12_DualNetDeepLabV3Plus_20_80_24_2_352_16/78.pth"
 
         self.has_class = True
         self.has_cam = True
         self.has_ss = True
+
+        self.a, self.b = 0.5, 0.3
 
         self.output_stride = 16
         # self.input_size = 513
@@ -488,13 +489,13 @@ class Config(object):
 
 
 """
-../../../WSS_Model_My/DSS/12_DualNetDeepLabV3Plus_20_80_32_2_352_16/10.pth
-2021-05-02 18:36:08 [E: 10] val mae:0.0697 f1:0.8862 acc:0.8862
-2021-05-02 18:36:08 [E: 10] ss 
-Overall Acc: 0.764122
-Mean Acc: 0.557173
-FreqW Acc: 0.636729
-Mean IoU: 0.367440
+../../../WSS_Model_My/DSS/12_DualNetDeepLabV3Plus_20_80_24_2_352_16/2.pth
+2021-05-02 22:34:01 [E:  2] val mae:0.0833 f1:0.8704 acc:0.8704
+2021-05-02 22:34:01 [E:  2] ss 
+Overall Acc: 0.743397
+Mean Acc: 0.698481
+FreqW Acc: 0.626105
+Mean IoU: 0.404195
 """
 
 
