@@ -257,6 +257,63 @@ class VOCRunner(object):
         Tools.print("{}".format(metrics.to_str(score)))
         return score
 
+    def inference_ss_logits_single_scale(self, model_file_name=None, data_loader=None, save_path=None):
+        if model_file_name is not None:
+            Tools.print("Load model form {}".format(model_file_name))
+            self.load_model(model_file_name)
+            pass
+
+        logit_save_path = Tools.new_dir("{}_logit".format(save_path))
+
+        self.net.eval()
+        metrics = StreamSegMetrics(self.config.ss_num_classes)
+        with torch.no_grad():
+            for i, (inputs, labels, image_info_list, label_info_list) in tqdm(
+                    enumerate(data_loader), total=len(data_loader)):
+                assert len(image_info_list) == 1
+
+                basename = os.path.basename(image_info_list[0])
+                logit_file_path = os.path.join(logit_save_path, basename.replace(".jpg", ".npy"))
+                im = Image.open(image_info_list[0])
+
+                ori_size = (im.size[1], im.size[0])
+                # logit_size = (ori_size[0] // 4, ori_size[1] // 4)
+                logit_size = ori_size
+
+                # 标签
+                target_im = Image.fromarray(np.zeros_like(np.asarray(im))).convert("L") \
+                    if label_info_list[0] == 1 else Image.open(label_info_list[0])
+                targets = np.expand_dims(np.array(target_im.resize((logit_size[1], logit_size[0]))), axis=0)
+
+                # 预测
+                output_one = self.net(inputs[0].float().cuda())
+                outputs = self._up_to_target(output_one, target_size=logit_size).detach().cpu()
+                preds = outputs.max(dim=1)[1].numpy()
+
+                # 计算
+                metrics.update(targets, preds)
+
+                if save_path:
+                    np.save(logit_file_path, outputs[0].numpy())
+                    pass
+
+                pass
+            pass
+
+        score = metrics.get_results()
+        Tools.print("{}".format(metrics.to_str(score)))
+        return score
+
+    @staticmethod
+    def _up_to_target(source, target_size, mode="bilinear"):
+        if source.size()[2] != target_size[0] or source.size()[3] != target_size[1]:
+            align_corners = True if mode == "nearest" else False
+            _source = torch.nn.functional.interpolate(source, size=target_size, mode=mode, align_corners=align_corners)
+            pass
+        else:
+            _source = source
+        return _source
+
     def load_model(self, model_file_name):
         Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
         checkpoint = torch.load(model_file_name)
@@ -279,19 +336,25 @@ def train(config):
     if config.only_inference_ss:
         dataset_ss_inference_train, dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss_voc_val_scale, config.ss_size,
-            scales=config.scales, data_root=config.data_root_path)
+            scales=None if config.single_scale else config.scales, data_root=config.data_root_path)
         data_loader_ss_inference_train = DataLoader(dataset_ss_inference_train, 1, False, num_workers=8)
         data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=8)
         data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=8)
 
-        inference_ss = voc_runner.inference_ss_logits if config.save_logits else voc_runner.inference_ss
+        if config.save_logits:
+            inference_ss = voc_runner.inference_ss_logits
+            if config.single_scale:
+                inference_ss = voc_runner.inference_ss_logits_single_scale
+        else:
+            inference_ss = voc_runner.inference_ss
+            pass
 
         inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_train,
                      save_path=Tools.new_dir(os.path.join(config.eval_save_path, "train")))
-        inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
-                     save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
-        inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
-                     save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+        # inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+        #              save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        # inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
+        #              save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
         return
 
     if config.only_eval_ss:
@@ -312,13 +375,15 @@ class Config(object):
         # 流程控制
         self.is_supervised = False
         self.only_train_ss = True  # 是否训练
-        self.only_inference_ss = False
-        self.save_logits = False
-        self.only_eval_ss = False
         self.sampling = False
+        self.only_eval_ss = False
 
-        self.gpu_id_1, self.gpu_id_4 = "1", "1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
+        self.only_inference_ss = False
+        self.single_scale = True
+        self.save_logits = True
+
+        # self.gpu_id_1, self.gpu_id_4 = "1", "1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
 
         self.ss_num_classes = 21
         self.ss_epoch_num = 100
@@ -384,6 +449,7 @@ class Config(object):
             train_label_path = "/mnt/4T/ALISURE/USS/WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5/train_final"
             if not os.path.isdir(train_label_path):
                 # train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
+                train_label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5/train_crf_final"
                 pass
             return train_label_path
         pass

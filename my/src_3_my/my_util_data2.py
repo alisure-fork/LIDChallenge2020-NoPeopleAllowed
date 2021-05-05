@@ -507,11 +507,32 @@ class VOCSegmentationScales(Dataset):
     pass
 
 
+class VOCSegmentationCRF(Dataset):
+
+    def __init__(self, images_list):
+        self.images_list = images_list
+        pass
+
+    def __len__(self):
+        return len(self.images_list)
+
+    def __getitem__(self, idx):
+        label_path, image_path = self.images_list[idx]
+
+        if label_path is None:
+            label_path = 1
+            pass
+        return image_path, label_path
+
+    pass
+
+
 class DatasetUtil(object):
 
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
     dataset_type_ss_voc_val_scale = "ss_voc_val_scale"
+    dataset_type_ss_voc_crf = "ss_voc_crf"
 
     @classmethod
     def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, scales=None,
@@ -561,6 +582,23 @@ class DatasetUtil(object):
             label_image_path = [[None, one_data["image_path"]] for one_data in data_info]
             inference_scale_test = VOCSegmentationScales(
                 label_image_path, transform_list=transform_test_list, return_image_info=True)
+            return inference_scale_train, inference_scale_val, inference_scale_test
+        ################################################################################################################
+        elif dataset_type == cls.dataset_type_ss_voc_crf:
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            inference_scale_train = VOCSegmentationCRF(label_image_path)
+
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            inference_scale_val = VOCSegmentationCRF(label_image_path)
+
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="test")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[None, one_data["image_path"]] for one_data in data_info]
+            inference_scale_test = VOCSegmentationCRF(label_image_path)
             return inference_scale_train, inference_scale_val, inference_scale_test
         ################################################################################################################
         else:
