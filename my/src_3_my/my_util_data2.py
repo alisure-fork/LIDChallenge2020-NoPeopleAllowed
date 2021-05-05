@@ -493,6 +493,7 @@ class VOCSegmentationScales(Dataset):
             mask = Image.open(label_path)
         else:
             mask = Image.fromarray(np.zeros_like(np.asarray(image))).convert("L")
+            label_path = 1
             pass
 
         image_mask_list = [transform(image, mask) for transform in self.transform_list]
@@ -530,10 +531,6 @@ class DatasetUtil(object):
             transform_train, transform_test = MyTransform.transform_train_voc_ss(image_size=image_size)
             return VOCSegmentation(label_image_path, transform=transform_test, return_image_info=True)
         elif dataset_type == cls.dataset_type_ss_voc_val_scale:
-            data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
-            data_info = data_info[::20] if sampling else data_info
-            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
-
             #############################################
             transform_test_list = []
             if scales is None:
@@ -547,16 +544,24 @@ class DatasetUtil(object):
                 pass
             #############################################
 
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="train_aug")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
+            inference_scale_train = VOCSegmentationScales(
+                label_image_path, transform_list=transform_test_list, return_image_info=True)
+
+            data_info = DataUtil.get_voc_info(data_root=data_root, split="val")
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[one_data["label_path"], one_data["image_path"]] for one_data in data_info]
             inference_scale_val = VOCSegmentationScales(
                 label_image_path, transform_list=transform_test_list, return_image_info=True)
 
             data_info = DataUtil.get_voc_info(data_root=data_root, split="test")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"]] for one_data in data_info]
-
             inference_scale_test = VOCSegmentationScales(
                 label_image_path, transform_list=transform_test_list, return_image_info=True)
-            return inference_scale_val, inference_scale_test
+            return inference_scale_train, inference_scale_val, inference_scale_test
         ################################################################################################################
         else:
             raise Exception("....")

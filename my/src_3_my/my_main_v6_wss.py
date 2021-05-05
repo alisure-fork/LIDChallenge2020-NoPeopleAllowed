@@ -207,6 +207,56 @@ class VOCRunner(object):
         Tools.print("{}".format(metrics.to_str(score)), txt_path=self.config.ss_save_result_txt)
         return score
 
+    def inference_ss_logits(self, model_file_name=None, data_loader=None, save_path=None):
+        if model_file_name is not None:
+            Tools.print("Load model form {}".format(model_file_name))
+            self.load_model(model_file_name)
+            pass
+
+        logit_save_path = Tools.new_dir("{}_logit".format(save_path))
+
+        self.net.eval()
+        metrics = StreamSegMetrics(self.config.ss_num_classes)
+        with torch.no_grad():
+            for i, (inputs, labels, image_info_list, label_info_list) in tqdm(
+                    enumerate(data_loader), total=len(data_loader)):
+                assert len(image_info_list) == 1
+
+                # 标签
+                basename = os.path.basename(image_info_list[0])
+                size = Image.open(image_info_list[0]).size
+                logit_file_path = os.path.join(logit_save_path, basename.replace(".jpg", ".npy"))
+                if os.path.exists(logit_file_path):
+                    continue
+
+                target_im = Image.fromarray(np.zeros_like(np.asarray(Image.open(image_info_list[0])))).convert("L") \
+                    if label_info_list[0] == 1 else Image.open(label_info_list[0])
+                target_im = target_im.resize((size[0] // 4, size[1] // 4))
+                targets = np.expand_dims(np.asarray(target_im), axis=0)
+
+                # 预测
+                outputs = 0
+                for input_index, input_one in enumerate(inputs):
+                    output_one = self.net(input_one.float().cuda())
+                    outputs += F.interpolate(output_one, size=(size[1] // 4, size[0] // 4),
+                                             mode="bilinear", align_corners=False).detach().cpu()
+                    pass
+                outputs = outputs / len(inputs)
+                preds = outputs.max(dim=1)[1].numpy()
+
+                # 计算
+                metrics.update(targets, preds)
+
+                if save_path:
+                    np.save(logit_file_path, outputs[0].numpy())
+                    pass
+                pass
+            pass
+
+        score = metrics.get_results()
+        Tools.print("{}".format(metrics.to_str(score)))
+        return score
+
     def load_model(self, model_file_name):
         Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
         checkpoint = torch.load(model_file_name)
@@ -234,12 +284,14 @@ def train(config):
         data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=8)
         data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=8)
 
-        voc_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_train,
-                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "train")))
-        voc_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
-                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
-        voc_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
-                                save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+        inference_ss = voc_runner.inference_ss_logits if config.save_logits else voc_runner.inference_ss
+
+        inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_train,
+                     save_path=Tools.new_dir(os.path.join(config.eval_save_path, "train")))
+        inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+                     save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
+                     save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
         return
 
     if config.only_eval_ss:
@@ -259,8 +311,9 @@ class Config(object):
     def __init__(self):
         # 流程控制
         self.is_supervised = False
-        self.only_train_ss = False  # 是否训练
-        self.only_inference_ss = True
+        self.only_train_ss = True  # 是否训练
+        self.only_inference_ss = False
+        self.save_logits = False
         self.only_eval_ss = False
         self.sampling = False
 
@@ -285,15 +338,13 @@ class Config(object):
         self.train_label_path = self.get_train_label(self.is_supervised)
 
         # 推理
-        # self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
+        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
         # self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90.pth"
         # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_5"
-        # self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
-        # self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth"
-        # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5"
-        self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
-        self.model_file_name = "../../../WSS_Model_VOC/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_final_100.pth"
-        self.eval_save_path = "../../../WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5"
+        self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth"
+        self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5"
+        # self.model_file_name = "../../../WSS_Model_VOC/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_final_100.pth"
+        # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5"
 
         # 网络
         self.Net = DeepLabV3Plus
@@ -303,7 +354,7 @@ class Config(object):
         self.data_root_path = self.get_data_root_path()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "6"
+        run_name = "7"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num,
             self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
@@ -330,7 +381,7 @@ class Config(object):
 
         if "Linux" in platform.platform():
             # train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
-            train_label_path = "/mnt/4T/ALISURE/USS/WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_5/train"
+            train_label_path = "/mnt/4T/ALISURE/USS/WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5/train_final"
             if not os.path.isdir(train_label_path):
                 # train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
                 pass
