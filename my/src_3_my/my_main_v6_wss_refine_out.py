@@ -110,7 +110,8 @@ class Config(object):
         self.ss_num_classes = 21
         self.ss_size = 352
         self.data_root_path = self.get_data_root_path()
-        self.logits_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5"
+        self.logits_path = "../../../WSS_Model_VOC_EVAL/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35_scales_1"
+        # self.logits_path = "../../../WSS_Model_VOC_EVAL/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_1"
         pass
 
     @staticmethod
@@ -127,6 +128,7 @@ class Config(object):
 
 
 """
+1
 4 GPU
 ../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth
 val
@@ -150,6 +152,31 @@ Overall Acc: 0.884620
 Mean Acc: 0.766945
 FreqW Acc: 0.797796
 Mean IoU: 0.659136
+
+
+2
+../../../WSS_Model_VOC/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35.pth
+val
+Overall Acc: 0.912211
+Mean Acc: 0.796920
+FreqW Acc: 0.846162
+Mean IoU: 0.677405
+crf val
+Overall Acc: 0.917492
+Mean Acc: 0.800304
+FreqW Acc: 0.854280
+Mean IoU: 0.690637
+
+train
+Overall Acc: 0.880951
+Mean Acc: 0.782357
+FreqW Acc: 0.794273
+Mean IoU: 0.652178
+crf train
+Overall Acc: 0.884319
+Mean Acc: 0.780837
+FreqW Acc: 0.798979
+Mean IoU: 0.657361
 """
 
 

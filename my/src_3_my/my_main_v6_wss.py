@@ -379,8 +379,8 @@ class Config(object):
         self.only_eval_ss = False
 
         self.only_inference_ss = False
-        self.single_scale = True
-        self.save_logits = True
+        self.single_scale = False
+        self.save_logits = False
 
         # self.gpu_id_1, self.gpu_id_4 = "1", "1, 2, 3"
         self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
@@ -406,10 +406,18 @@ class Config(object):
         self.scales = (1.0, 0.75, 0.5, 1.25, 1.5)
         # self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90.pth"
         # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_18_5_513/ss_90_scales_5"
-        self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth"
-        self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5"
         # self.model_file_name = "../../../WSS_Model_VOC/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_final_100.pth"
         # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5"
+
+        # 1
+        # self.model_file_name = "../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth"
+        # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5"
+        # 2
+        self.scales = (1.0, )
+        # self.model_file_name = "../../../WSS_Model_VOC/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35.pth"
+        # self.eval_save_path = "../../../WSS_Model_VOC_EVAL/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35_scales_1"
+        self.model_file_name = "../../../WSS_Model_VOC/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth"
+        self.eval_save_path = "../../../WSS_Model_VOC_EVAL/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_1"
 
         # 网络
         self.Net = DeepLabV3Plus
@@ -419,7 +427,7 @@ class Config(object):
         self.data_root_path = self.get_data_root_path()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
-        run_name = "7"
+        run_name = "8"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num,
             self.ss_batch_size, self.ss_save_epoch_freq, self.ss_size)
@@ -448,8 +456,12 @@ class Config(object):
             # train_label_path = "/mnt/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
             train_label_path = "/mnt/4T/ALISURE/USS/WSS_Model_VOC_EVAL/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_100_scales_5/train_final"
             if not os.path.isdir(train_label_path):
+                # 1
                 # train_label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask_voc/result/2/sem_seg/train_aug"
-                train_label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5/train_crf_final"
+                # 2
+                # train_label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5/train_crf_final"
+                # 3
+                train_label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_VOC_EVAL/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35_scales_1/train_crf_final"
                 pass
             return train_label_path
         pass
@@ -495,28 +507,6 @@ Mean IoU: 0.656029
 
 
 """
-4 GPU
-../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth
-2021-05-04 17:14:58 100 
-Overall Acc: 0.906540
-Mean Acc: 0.773918
-FreqW Acc: 0.835605
-Mean IoU: 0.660385
-../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5
-val
-Overall Acc: 0.911452
-Mean Acc: 0.777744
-FreqW Acc: 0.843194
-Mean IoU: 0.672578
-Train
-Overall Acc: 0.884174
-Mean Acc: 0.770555
-FreqW Acc: 0.797313
-Mean IoU: 0.660239
-"""
-
-
-"""
 3 GPU Self Training
 ../../../WSS_Model_VOC/6_DeepLabV3PlusResNet101_21_100_36_5_352/ss_final_100.pth
 Overall Acc: 0.907379
@@ -534,6 +524,64 @@ Overall Acc: 0.880241
 Mean Acc: 0.796864
 FreqW Acc: 0.793459
 Mean IoU: 0.654750
+"""
+
+
+"""
+4 GPU
+
+1
+../../../WSS_Model_VOC/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth
+2021-05-04 17:14:58 100 
+Overall Acc: 0.906540
+Mean Acc: 0.773918
+FreqW Acc: 0.835605
+Mean IoU: 0.660385
+../../../WSS_Model_VOC_EVAL/5_DeepLabV3PlusResNet101_21_100_48_5_352/ss_100_scales_5
+val
+Overall Acc: 0.911452
+Mean Acc: 0.777744
+FreqW Acc: 0.843194
+Mean IoU: 0.672578
+Train
+Overall Acc: 0.884174
+Mean Acc: 0.770555
+FreqW Acc: 0.797313
+Mean IoU: 0.660239
+
+2
+../../../WSS_Model_VOC/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_35.pth
+val
+Overall Acc: 0.912211
+Mean Acc: 0.796920
+FreqW Acc: 0.846161
+Mean IoU: 0.677405
+val scale 5
+Overall Acc: 0.917007
+Mean Acc: 0.801310
+FreqW Acc: 0.853644
+Mean IoU: 0.691245
+train
+Overall Acc: 0.880951
+Mean Acc: 0.782357
+FreqW Acc: 0.794273
+Mean IoU: 0.652178
+../../../WSS_Model_VOC/7_DeepLabV3PlusResNet101_21_100_48_5_352/ss_final_100.pth
+val
+Overall Acc: 0.911502
+Mean Acc: 0.777925
+FreqW Acc: 0.843317
+Mean IoU: 0.670318
+val scale 5
+Overall Acc: 0.915412
+Mean Acc: 0.781614
+FreqW Acc: 0.849520
+Mean IoU: 0.681968
+train
+Overall Acc: 0.881573
+Mean Acc: 0.771317
+FreqW Acc: 0.793992
+Mean IoU: 0.651336
 """
 
 
