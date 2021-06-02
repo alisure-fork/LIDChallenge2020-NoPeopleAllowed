@@ -247,7 +247,7 @@ def train(config):
     ss_runner = SSRunner(config=config)
 
     # 统计参数量和计算量
-    ss_runner.stat()
+    # ss_runner.stat()
 
     if config.only_inference_ss:
         dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
@@ -304,7 +304,7 @@ class Config(object):
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
         self.ss_milestones = [5, 8]
-        self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
+        self.ss_batch_size = 8 * (len(self.gpu_id_4.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
         self.ss_eval_epoch_freq = 1
