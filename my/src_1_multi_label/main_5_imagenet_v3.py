@@ -30,7 +30,7 @@ class SSRunner(object):
         # Data
         self.dataset_ss_train, _, self.dataset_ss_val = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss, self.config.ss_size, is_balance=self.config.is_balance_data,
-            data_root=self.config.data_root_path, train_label_path=self.config.label_path)
+            data_root=self.config.data_root_path, train_label_path=self.config.label_path, max_size=self.config.max_size)
         self.data_loader_ss_train = DataLoader(self.dataset_ss_train, self.config.ss_batch_size,
                                                True, num_workers=16, drop_last=True)
         self.data_loader_ss_val = DataLoader(self.dataset_ss_val, self.config.ss_batch_size,
@@ -66,6 +66,7 @@ class SSRunner(object):
             pass
 
         # self.eval_ss(epoch=0)
+        best_iou = 0.0
 
         for epoch in range(start_epoch, self.config.ss_epoch_num):
             Tools.print()
@@ -94,7 +95,15 @@ class SSRunner(object):
                 all_loss += loss.item()
 
                 if (i + 1) % (len(self.data_loader_ss_train) // 10) == 0:
-                    self.eval_ss(epoch=epoch)
+                    score = self.eval_ss(epoch=epoch)
+                    mean_iou = score["Mean IoU"]
+                    if mean_iou > best_iou:
+                        best_iou = mean_iou
+                        save_file_name = Tools.new_dir(os.path.join(
+                            self.config.ss_model_dir, "ss_{}_{}_{}.pth".format(epoch, i, best_iou)))
+                        torch.save(self.net.state_dict(), save_file_name)
+                        Tools.print("Save Model to {}".format(save_file_name), txt_path=self.config.ss_save_result_txt)
+                        Tools.print()
                     pass
                 pass
             self.scheduler.step()
@@ -119,7 +128,7 @@ class SSRunner(object):
             ###########################################################################
             # 3 评估模型
             if epoch % self.config.ss_eval_epoch_freq == 0:
-                self.eval_ss(epoch=epoch)
+                score = self.eval_ss(epoch=epoch)
                 pass
             ###########################################################################
 
@@ -252,7 +261,7 @@ def train(config):
     if config.only_inference_ss:
         dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
             DatasetUtil.dataset_type_ss_scale, config.ss_size, scales=config.scales,
-            data_root=config.data_root_path, train_label_path=config.label_path)
+            data_root=config.data_root_path, train_label_path=config.label_path, max_size=config.max_size_inference)
         if config.inference_ss_val:
             data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=16)
             ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
@@ -269,6 +278,8 @@ def train(config):
         return
 
     if config.only_train_ss:
+        # model_file = "../../../WSS_Model_SS_0602/1_DeepLabV3PlusResNet152_201_10_24_1_352_balance/ss_5.pth"
+        # ss_runner.train_ss(start_epoch=6, model_file_name=model_file)
         ss_runner.train_ss(start_epoch=0, model_file_name=None)
         return
 
@@ -284,11 +295,11 @@ class Config(object):
         # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = True  # 是否训练SS
+        self.only_train_ss = False  # 是否训练SS
         self.is_balance_data = True  # 是否平衡数据
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = False  # 是否推理SS
-        self.inference_ss_val = True  # 是否推理验证集
+        self.only_inference_ss = True  # 是否推理SS
+        self.inference_ss_val = False  # 是否推理验证集
 
         # 测试相关
         self.scales, self.model_file_name, self.eval_save_path = self.inference_param()
@@ -304,12 +315,15 @@ class Config(object):
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
         self.ss_milestones = [5, 8]
-        self.ss_batch_size = 8 * (len(self.gpu_id_4.split(",")) - 1)
+        self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
         self.ss_eval_epoch_freq = 1
         self.ss_size = 352
-        self.output_stride = 16
+        self.output_stride = 8
+        self.max_size = 500
+        self.max_size_inference = 500
+        # self.max_size_inference = 0
         self.data_root_path = self.get_data_root_path()
 
         # 网络
@@ -318,13 +332,17 @@ class Config(object):
         # self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
         self.arch, self.arch_name = deeplabv3plus_resnet152, "DeepLabV3PlusResNet152"
 
-        run_name = "1"
-        self.model_name = "{}_{}_{}_{}_{}_{}_{}{}".format(
+        run_name = "3"
+        self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
-            self.ss_save_epoch_freq, self.ss_size, "_balance" if self.is_balance_data else "")
+            self.ss_save_epoch_freq, self.ss_size, self.output_stride, "_balance" if self.is_balance_data else "")
         self.ss_model_dir = "../../../WSS_Model_SS_0602/{}".format(self.model_name)
         self.ss_save_result_txt = Tools.new_dir("{}/result.txt".format(self.ss_model_dir))
         Tools.print(self.model_name)
+
+        if not self.only_train_ss:
+            self.ss_batch_size = self.ss_batch_size // (len(self.gpu_id_4.split(",")) - 1)
+            pass
         pass
 
     @staticmethod
@@ -350,11 +368,29 @@ class Config(object):
         # eval_save_path = "../../../WSS_Model_SS_EVAL/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8_scales_7"
 
         # 4 平衡数据训练
-        scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        model_file_name = "../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7.pth"
-        eval_save_path = "../../../WSS_Model_SS_EVAL/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7_scales_7"
+        # scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        # model_file_name = "../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7.pth"
+        # eval_save_path = "../../../WSS_Model_SS_EVAL/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7_scales_7"
         # model_file_name = "../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_final_10.pth"
         # eval_save_path = "../../../WSS_Model_SS_EVAL/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_10_scales_7"
+
+        # 5 Resnet152
+        # scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        # model_file_name = "../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_7_5554_0.4877185673519882.pth"
+        # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_7_scales_{}".format(len(scales))
+
+        # 6 other people: Resnet152
+        # scales = (1.0,)
+        # model_file_name = "../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_0_2221_0.30658016552565515.pth"
+        # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_0_scales_{}".format(len(scales))
+        # model_file_name = "../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_0_1110_0.16993653364544287.pth"
+        # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_00_scales_{}".format(len(scales))
+
+        # 7 Resnet152 output_stride = 8
+        # scales = (1.0,)
+        scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
+        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_scales_{}_500".format(len(scales))
 
         return scales, model_file_name, eval_save_path
 
@@ -427,6 +463,35 @@ Overall Acc: 0.856393
 Mean Acc: 0.650578
 FreqW Acc: 0.767412
 Mean IoU: 0.484445
+
+../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_7_5554_0.4877185673519882.pth
+Overall Acc: 0.828434
+Mean Acc: 0.681685
+FreqW Acc: 0.729250
+Mean IoU: 0.487719
+
+2021-06-05 00:13:04 
+Overall Acc: 0.859463
+Mean Acc: 0.658986
+FreqW Acc: 0.771794
+Mean IoU: 0.493816
+
+../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth
+Overall Acc: 0.835645
+Mean Acc: 0.696309
+FreqW Acc: 0.737874
+Mean IoU: 0.496127
+
+max_size_inference = 0
+Overall Acc: 0.855468
+Mean Acc: 0.699628
+FreqW Acc: 0.767776
+Mean IoU: 0.491615
+max_size_inference = 500
+Overall Acc: 0.855467
+Mean Acc: 0.700577
+FreqW Acc: 0.767827
+Mean IoU: 0.492327
 """
 
 

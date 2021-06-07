@@ -233,60 +233,6 @@ class ExtResize(object):
     pass
 
 
-class ExtColorJitter(object):
-
-    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
-        self.brightness = self._check_input(brightness, 'brightness')
-        self.contrast = self._check_input(contrast, 'contrast')
-        self.saturation = self._check_input(saturation, 'saturation')
-        self.hue = self._check_input(hue, 'hue', center=0, bound=(-0.5, 0.5), clip_first_on_zero=False)
-        pass
-
-    def _check_input(self, value, name, center=1, bound=(0, float('inf')), clip_first_on_zero=True):
-        if isinstance(value, numbers.Number):
-            if value < 0:
-                raise ValueError("If {} is a single number, it must be non negative.".format(name))
-            value = [center - value, center + value]
-            if clip_first_on_zero:
-                value[0] = max(value[0], 0)
-        elif isinstance(value, (tuple, list)) and len(value) == 2:
-            if not bound[0] <= value[0] <= value[1] <= bound[1]:
-                raise ValueError("{} values should be between {}".format(name, bound))
-        else:
-            raise TypeError("{} should be a single number or a list/tuple with lenght 2.".format(name))
-
-        # if value is 0 or (1., 1.) for brightness/contrast/saturation
-        # or (0., 0.) for hue, do nothing
-        if value[0] == value[1] == center:
-            value = None
-        return value
-
-    @staticmethod
-    def get_params(brightness, contrast, saturation, hue):
-        transforms = []
-        if brightness is not None:
-            brightness_factor = random.uniform(brightness[0], brightness[1])
-            transforms.append(Lambda(lambda img: F.adjust_brightness(img, brightness_factor)))
-        if contrast is not None:
-            contrast_factor = random.uniform(contrast[0], contrast[1])
-            transforms.append(Lambda(lambda img: F.adjust_contrast(img, contrast_factor)))
-        if saturation is not None:
-            saturation_factor = random.uniform(saturation[0], saturation[1])
-            transforms.append(Lambda(lambda img: F.adjust_saturation(img, saturation_factor)))
-        if hue is not None:
-            hue_factor = random.uniform(hue[0], hue[1])
-            transforms.append(Lambda(lambda img: F.adjust_hue(img, hue_factor)))
-        random.shuffle(transforms)
-        transform = Compose(transforms)
-        return transform
-
-    def __call__(self, img, lbl):
-        transform = self.get_params(self.brightness, self.contrast, self.saturation, self.hue)
-        return transform(img), lbl
-
-    pass
-
-
 class UnNormalize(object):
 
     def __init__(self, mean, std):
@@ -464,16 +410,15 @@ class DataUtil(object):
         return im_color
 
     @staticmethod
-    def read_image(image_path, is_rgb):
+    def read_image(image_path, is_rgb, max_size=500):
         im = Image.open(image_path)
         im = im.convert("RGB") if is_rgb else im
 
-        max_value = 500
-
-        value1 = max_value if im.size[0] > im.size[1] else im.size[0] * max_value // im.size[1]
-        value2 = im.size[1] * max_value // im.size[0] if im.size[0] > im.size[1] else max_value
-
-        im = im.resize((value1, value2))
+        if max_size > 0:
+            value1 = max_size if im.size[0] > im.size[1] else im.size[0] * max_size // im.size[1]
+            value2 = im.size[1] * max_size // im.size[0] if im.size[0] > im.size[1] else max_size
+            im = im.resize((value1, value2))
+            pass
         return im
 
     pass
@@ -721,10 +666,11 @@ class ImageNetMLCBalance(Dataset):
 
 class ImageNetSegmentation(Dataset):
 
-    def __init__(self, images_list, transform, return_image_info=False):
+    def __init__(self, images_list, transform, return_image_info=False, max_size=500):
         self.transform = transform
         self.images_list = images_list
         self.return_image_info = return_image_info
+        self.max_size = max_size
         pass
 
     def __len__(self):
@@ -733,10 +679,10 @@ class ImageNetSegmentation(Dataset):
     def __getitem__(self, idx):
         label_path, image_path, _ = self.images_list[idx]
 
-        image = DataUtil.read_image(image_path, is_rgb=True)
+        image = DataUtil.read_image(image_path, is_rgb=True, max_size=self.max_size)
 
         if label_path is not None:
-            mask = DataUtil.read_image(label_path, is_rgb=False)
+            mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
 
             image, mask = self.transform(image, mask)
             if self.return_image_info:
@@ -757,10 +703,11 @@ class ImageNetSegmentation(Dataset):
 
 class ImageNetSegmentationScales(Dataset):
 
-    def __init__(self, images_list, transform_list, return_image_info=False):
+    def __init__(self, images_list, transform_list, return_image_info=False, max_size=0):
         self.images_list = images_list
         self.transform_list = transform_list
         self.return_image_info = return_image_info
+        self.max_size = max_size
         pass
 
     def __len__(self):
@@ -769,10 +716,10 @@ class ImageNetSegmentationScales(Dataset):
     def __getitem__(self, idx):
         label_path, image_path, _ = self.images_list[idx]
 
-        image = DataUtil.read_image(image_path, is_rgb=True)
+        image = DataUtil.read_image(image_path, is_rgb=True, max_size=self.max_size)
 
         if label_path is not None:
-            mask = DataUtil.read_image(label_path, is_rgb=False)
+            mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
         else:
             mask = Image.fromarray(np.zeros_like(np.asarray(image))).convert("L")
             pass
@@ -790,12 +737,13 @@ class ImageNetSegmentationScales(Dataset):
 
 class ImageNetSegmentationBalance(Dataset):
 
-    def __init__(self, images_list, transform, return_image_info=False, sample_num=None):
+    def __init__(self, images_list, transform, return_image_info=False, sample_num=None, max_size=500):
         self.transform = transform
         self.images_list = images_list
         self.return_image_info = return_image_info
         self.train_images_list = None
         self.sample_num = sample_num if sample_num is not None else 1000
+        self.max_size = max_size
 
         self.all_image_dict = {}
         for one in self.images_list:
@@ -828,8 +776,8 @@ class ImageNetSegmentationBalance(Dataset):
     def __getitem__(self, idx):
         label_path, image_path, _ = self.train_images_list[idx]
 
-        image = DataUtil.read_image(image_path, is_rgb=True)
-        mask = DataUtil.read_image(label_path, is_rgb=False)
+        image = DataUtil.read_image(image_path, is_rgb=True, max_size=self.max_size)
+        mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
 
         image, mask = self.transform(image, mask)
         if self.return_image_info:
@@ -879,7 +827,7 @@ class DatasetUtil(object):
 
     @classmethod
     def get_dataset_by_type(cls, dataset_type, image_size, data_root=None, scales=None, is_balance=False,
-                            return_image_info=False, sampling=False, train_label_path=None):
+                            return_image_info=False, sampling=False, train_label_path=None, max_size=500):
         ################################################################################################################
         if dataset_type == cls.dataset_type_person:
             data_info = DataUtil.get_data_info(data_root=data_root)
@@ -962,18 +910,21 @@ class DatasetUtil(object):
             label_image_path = [[one_data["label_path"], one_data["image_path"], one_data["label"]] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
             train_class = ImageNetSegmentationBalance if is_balance else ImageNetSegmentation
-            train = train_class(label_image_path, transform_train, return_image_info=return_image_info)
+            train = train_class(label_image_path, transform_train,
+                                return_image_info=return_image_info, max_size=max_size)
 
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
             transform_test = MyTransform.transform_train_ss_2(image_size=image_size)
-            train_eval = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+            train_eval = ImageNetSegmentation(label_image_path, transform=transform_test,
+                                              return_image_info=return_image_info, max_size=max_size)
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="val")
             data_info = data_info[::20] if sampling else data_info
 
             label_image_path = [[one_data["label_path"], one_data["image_path"], None] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
-            val = ImageNetSegmentation(label_image_path, transform=transform_test, return_image_info=return_image_info)
+            val = ImageNetSegmentation(label_image_path, transform=transform_test,
+                                       return_image_info=return_image_info, max_size=max_size)
 
             return train, train_eval, val
         ################################################################################################################
@@ -996,14 +947,14 @@ class DatasetUtil(object):
             #############################################
 
             inference_scale_val = ImageNetSegmentationScales(
-                label_image_path, transform_list=transform_test_list, return_image_info=True)
+                label_image_path, transform_list=transform_test_list, return_image_info=True, max_size=max_size)
 
             data_info = DataUtil.get_ss_info(data_root=data_root, split="test")
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"], None] for one_data in data_info]
 
             inference_scale_test = ImageNetSegmentationScales(
-                label_image_path, transform_list=transform_test_list, return_image_info=True)
+                label_image_path, transform_list=transform_test_list, return_image_info=True, max_size=max_size)
             return inference_scale_val, inference_scale_test
         ################################################################################################################
         else:
