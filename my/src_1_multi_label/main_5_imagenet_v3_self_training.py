@@ -19,7 +19,7 @@ from util_data import DataUtil, DatasetUtil, MyTransform
 from torch.nn.parallel.data_parallel import DataParallel
 sys.path.append("../../")
 from deep_labv3plus_pytorch.metrics import StreamSegMetrics
-from util_network import DeepLabV3Plus, deeplabv3_resnet50, deeplabv3plus_resnet101, deeplabv3plus_resnet152
+from util_network import DeepLabV3Plus, deeplabv3plus_resnet50, deeplabv3plus_resnet101, deeplabv3plus_resnet152
 
 
 class SSRunner(object):
@@ -232,6 +232,41 @@ class SSRunner(object):
         Tools.print("{}".format(metrics.to_str(score)), txt_path=self.config.ss_save_result_txt)
         return score
 
+    def inference_ss_train(self, model_file_name=None, data_loader=None, save_path=None):
+        if model_file_name is not None:
+            Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
+            self.load_model(model_file_name)
+            pass
+
+        final_save_path = Tools.new_dir("{}_final".format(save_path))
+
+        self.net.eval()
+        with torch.no_grad():
+            for i, (inputs, labels, image_info_list) in tqdm(enumerate(data_loader), total=len(data_loader)):
+                assert len(image_info_list) == 1
+
+                # 标签
+                basename = image_info_list[0].split("Data/DET/")[1]
+                final_name = os.path.join(final_save_path, basename.replace(".JPEG", ".png"))
+                final_name = Tools.new_dir(final_name)
+                if os.path.exists(final_name):
+                    continue
+
+                # 预测
+                outputs = self.net(inputs[0].float().cuda()).cpu()
+                preds = outputs.max(dim=1)[1].numpy()
+
+                if save_path:
+                    Image.open(image_info_list[0]).save(Tools.new_dir(os.path.join(save_path, basename)))
+                    DataUtil.gray_to_color(np.asarray(preds[0], dtype=np.uint8)).save(
+                        os.path.join(save_path, basename.replace(".JPEG", ".png")))
+                    Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(final_name)
+                    pass
+                pass
+            pass
+
+        pass
+
     def load_model(self, model_file_name):
         Tools.print("Load model form {}".format(model_file_name), txt_path=self.config.ss_save_result_txt)
         checkpoint = torch.load(model_file_name)
@@ -259,17 +294,27 @@ def train(config):
     # ss_runner.stat()
 
     if config.only_inference_ss:
-        dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
-            DatasetUtil.dataset_type_ss_scale, config.ss_size, scales=config.scales,
-            data_root=config.data_root_path, train_label_path=config.label_path, max_size=config.max_size_inference)
-        if config.inference_ss_val:
-            data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=16)
-            ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
-                                   save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+        if config.inference_ss_train:
+            dataset_ss_inference_train = DatasetUtil.get_dataset_by_type(
+                DatasetUtil.dataset_type_ss_scale_train, config.ss_size, data_root=config.data_root_path,
+                train_label_path=config.label_path, max_size=config.max_size_inference)
+            data_loader_ss_inference_train = DataLoader(dataset_ss_inference_train, 1, False, num_workers=16)
+            ss_runner.inference_ss_train(model_file_name=config.model_file_name,
+                                         data_loader=data_loader_ss_inference_train,
+                                         save_path=Tools.new_dir(os.path.join(config.eval_save_path, "train")))
         else:
-            data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=16)
-            ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
-                                   save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+            dataset_ss_inference_val, dataset_ss_inference_test = DatasetUtil.get_dataset_by_type(
+                DatasetUtil.dataset_type_ss_scale, config.ss_size, scales=config.scales,
+                data_root=config.data_root_path, train_label_path=config.label_path, max_size=config.max_size_inference)
+            if config.inference_ss_val:
+                data_loader_ss_inference_val = DataLoader(dataset_ss_inference_val, 1, False, num_workers=16)
+                ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_val,
+                                       save_path=Tools.new_dir(os.path.join(config.eval_save_path, "val")))
+            else:
+                data_loader_ss_inference_test = DataLoader(dataset_ss_inference_test, 1, False, num_workers=16)
+                ss_runner.inference_ss(model_file_name=config.model_file_name, data_loader=data_loader_ss_inference_test,
+                                       save_path=Tools.new_dir(os.path.join(config.eval_save_path, "test")))
+                pass
             pass
         return
 
@@ -289,17 +334,18 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
         # 流程控制
         self.only_train_ss = False  # 是否训练SS
         self.is_balance_data = True  # 是否平衡数据
         self.only_eval_ss = False  # 是否评估SS
         self.only_inference_ss = True  # 是否推理SS
-        self.inference_ss_val = True  # 是否推理验证集
+        self.inference_ss_train = True  # 是否推理训练集
+        self.inference_ss_val = False  # 是否推理验证集
 
         # 测试相关
         self.scales, self.model_file_name, self.eval_save_path = self.inference_param()
@@ -328,7 +374,7 @@ class Config(object):
 
         # 网络
         self.Net = DeepLabV3Plus
-        # self.arch, self.arch_name = deeplabv3_resnet50, "DeepLabV3PlusResNet50"
+        # self.arch, self.arch_name = deeplabv3plus_resnet50, "DeepLabV3PlusResNet50"
         # self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
         self.arch, self.arch_name = deeplabv3plus_resnet152, "DeepLabV3PlusResNet152"
 
@@ -396,11 +442,10 @@ class Config(object):
         # model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_0_2221_0.31225540973527816.pth"
         # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_0_2221_scales_{}_500".format(len(scales))
 
-        # 9 Resnet152 output_stride = 8
-        # scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        scales = (1.0, 0.75, 0.5, 1.5, 2.0)
-        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10.pth"
-        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10_scales_{}_500".format(len(scales))
+        # 9 Resnet 50 or 152 output_stride = 8 train
+        scales = (1.0, )
+        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
+        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500"
 
         return scales, model_file_name, eval_save_path
 

@@ -343,6 +343,13 @@ class DataUtil(object):
             return [{"image_path": image, "label_path": mask} for image, mask in
                     zip(val_image_path, val_label_path)]
 
+        if split == "inference_train":
+            data_info = cls.get_data_info(data_root=data_root)
+
+            train_image_path = [one_data["image_path"] for one_data in data_info]
+            Tools.print("{}".format(len(train_image_path)))
+            return [{"image_path": image} for image in train_image_path]
+
         pass
 
     @staticmethod
@@ -820,6 +827,7 @@ class DatasetUtil(object):
     dataset_type_mlc = "mlc"
     dataset_type_ss = "ss"
     dataset_type_ss_scale = "ss_scale"
+    dataset_type_ss_scale_train = "ss_scale_train"
 
     dataset_type_ss_voc_train = "ss_voc_train"
     dataset_type_ss_voc_val = "ss_voc_val"
@@ -956,6 +964,29 @@ class DatasetUtil(object):
             inference_scale_test = ImageNetSegmentationScales(
                 label_image_path, transform_list=transform_test_list, return_image_info=True, max_size=max_size)
             return inference_scale_val, inference_scale_test
+        ################################################################################################################
+        elif dataset_type == cls.dataset_type_ss_scale_train:
+            data_info = DataUtil.get_ss_info(data_root=data_root, split="inference_train")
+            data_info = data_info[len(data_info) // 2:]#[::-1]
+            data_info = data_info[::20] if sampling else data_info
+            label_image_path = [[None, one_data["image_path"], None] for one_data in data_info]
+
+            #############################################
+            transform_test_list = []
+            if scales is None:
+                transform_test = MyTransform.transform_test_ss(image_size=image_size)
+                transform_test_list.append(transform_test)
+            else:
+                for scale in scales:
+                    transform_test = MyTransform.transform_test_ss(image_size=int(scale * image_size))
+                    transform_test_list.append(transform_test)
+                    pass
+                pass
+            #############################################
+
+            inference_scale = ImageNetSegmentationScales(
+                label_image_path, transform_list=transform_test_list, return_image_info=True, max_size=max_size)
+            return inference_scale
         ################################################################################################################
         else:
             raise Exception("....")

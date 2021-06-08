@@ -50,10 +50,9 @@ class SSRunner(object):
         # Optimize
         self.optimizer = optim.SGD(params=[
             {'params': self.net.module.model.backbone.parameters(), 'lr': self.config.ss_lr},
-            {'params': self.net.module.model.classifier.parameters(), 'lr': self.config.ss_lr * 10},
+            {'params': self.net.module.model.classifier.parameters(), 'lr': self.config.ss_lr},
         ], lr=self.config.ss_lr, momentum=0.9, weight_decay=1e-4)
-        self.scheduler = optim.lr_scheduler.MultiStepLR(
-            self.optimizer, milestones=self.config.ss_milestones, gamma=0.1)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1111, gamma=0.9)
 
         # Loss
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='mean').cuda()
@@ -94,7 +93,10 @@ class SSRunner(object):
 
                 all_loss += loss.item()
 
-                if (i + 1) % (len(self.data_loader_ss_train) // 10) == 0:
+                if (i + 1) % (len(self.data_loader_ss_train) // 20) == 0:
+                    Tools.print('Epoch:{:2d}, lr={:.6f} lr2={:.6f}'.format(
+                        epoch, self.optimizer.param_groups[0]['lr'], self.optimizer.param_groups[1]['lr']),
+                        txt_path=self.config.ss_save_result_txt)
                     score = self.eval_ss(epoch=epoch)
                     mean_iou = score["Mean IoU"]
                     if mean_iou > best_iou:
@@ -105,8 +107,8 @@ class SSRunner(object):
                         Tools.print("Save Model to {}".format(save_file_name), txt_path=self.config.ss_save_result_txt)
                         Tools.print()
                     pass
+                self.scheduler.step()
                 pass
-            self.scheduler.step()
             ###########################################################################
 
             Tools.print("[E:{:3d}/{:3d}] ss loss:{:.4f}".format(
@@ -278,9 +280,10 @@ def train(config):
         return
 
     if config.only_train_ss:
-        # model_file = "../../../WSS_Model_SS_0602/1_DeepLabV3PlusResNet152_201_10_24_1_352_balance/ss_5.pth"
-        # ss_runner.train_ss(start_epoch=6, model_file_name=model_file)
-        ss_runner.train_ss(start_epoch=0, model_file_name=None)
+        model_file = "../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_7_5554_0.4877185673519882.pth"
+        ss_runner.train_ss(start_epoch=0, model_file_name=model_file)
+
+        # ss_runner.train_ss(start_epoch=0, model_file_name=None)
         return
 
     pass
@@ -289,16 +292,16 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = False  # 是否训练SS
+        self.only_train_ss = True  # 是否训练SS
         self.is_balance_data = True  # 是否平衡数据
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = True  # 是否推理SS
+        self.only_inference_ss = False  # 是否推理SS
         self.inference_ss_val = True  # 是否推理验证集
 
         # 测试相关
@@ -314,7 +317,6 @@ class Config(object):
         # 参数
         self.ss_num_classes = 201
         self.ss_epoch_num = 10
-        self.ss_milestones = [5, 8]
         self.ss_batch_size = 6 * (len(self.gpu_id_4.split(",")) - 1)
         self.ss_lr = 0.001
         self.ss_save_epoch_freq = 1
@@ -332,7 +334,7 @@ class Config(object):
         # self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
         self.arch, self.arch_name = deeplabv3plus_resnet152, "DeepLabV3PlusResNet152"
 
-        run_name = "3"
+        run_name = "4"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
             self.ss_save_epoch_freq, self.ss_size, self.output_stride, "_balance" if self.is_balance_data else "")
