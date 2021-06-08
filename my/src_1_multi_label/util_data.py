@@ -1,256 +1,15 @@
 import os
-import cv2
-import json
 import torch
 import random
-import numbers
-import torchvision
 import numpy as np
 from glob import glob
 from PIL import Image
 import scipy.io as scio
-from skimage.io import imread
 from torchvision import transforms
 from alisuretool.Tools import Tools
 from torch.utils.data import Dataset
-import torchvision.transforms.functional as F
-
-
-#######################################################################################################################
-
-
-class ExtCompose(object):
-
-    def __init__(self, transforms):
-        self.transforms = transforms
-
-    def __call__(self, img, lbl):
-        for t in self.transforms:
-            img, lbl = t(img, lbl)
-        return img, lbl
-
-    pass
-
-
-class ExtCenterCrop(object):
-
-    def __init__(self, size):
-        self.size = (int(size), int(size)) if isinstance(size, numbers.Number) else size
-        pass
-
-    def __call__(self, img, lbl):
-        return F.center_crop(img, self.size), F.center_crop(lbl, self.size)
-
-    pass
-
-
-class ExtRandomScale(object):
-    def __init__(self, scale_range, interpolation=Image.BILINEAR):
-        self.scale_range = scale_range
-        self.interpolation = interpolation
-
-    def __call__(self, img, lbl):
-        assert img.size == lbl.size
-        scale = random.uniform(self.scale_range[0], self.scale_range[1])
-        target_size = (int(img.size[1] * scale), int(img.size[0] * scale))
-        return F.resize(img, target_size, self.interpolation), F.resize(lbl, target_size, Image.NEAREST)
-
-    pass
-
-
-class ExtScale(object):
-
-    def __init__(self, scale, interpolation=Image.BILINEAR):
-        self.scale = scale
-        self.interpolation = interpolation
-
-    def __call__(self, img, lbl):
-        assert img.size == lbl.size
-        target_size = (int(img.size[1] * self.scale), int(img.size[0] * self.scale))  # (H, W)
-        return F.resize(img, target_size, self.interpolation), F.resize(lbl, target_size, Image.NEAREST)
-
-    pass
-
-
-class ExtRandomRotation(object):
-
-    def __init__(self, degrees, resample=False, expand=False, center=None):
-        if isinstance(degrees, numbers.Number):
-            if degrees < 0:
-                raise ValueError("If degrees is a single number, it must be positive.")
-            self.degrees = (-degrees, degrees)
-        else:
-            if len(degrees) != 2:
-                raise ValueError("If degrees is a sequence, it must be of len 2.")
-            self.degrees = degrees
-
-        self.resample = resample
-        self.expand = expand
-        self.center = center
-        pass
-
-    @staticmethod
-    def get_params(degrees):
-        angle = random.uniform(degrees[0], degrees[1])
-        return angle
-
-    def __call__(self, img, lbl):
-        angle = self.get_params(self.degrees)
-        return F.rotate(img, angle, self.resample, self.expand, self.center), \
-               F.rotate(lbl, angle, self.resample, self.expand, self.center)
-
-    pass
-
-
-class ExtRandomHorizontalFlip(object):
-
-    def __init__(self, p=0.5):
-        self.p = p
-
-    def __call__(self, img, lbl):
-        if random.random() < self.p:
-            return F.hflip(img), F.hflip(lbl)
-        return img, lbl
-
-    pass
-
-
-class ExtRandomVerticalFlip(object):
-
-    def __init__(self, p=0.5):
-        self.p = p
-
-    def __call__(self, img, lbl):
-        if random.random() < self.p:
-            return F.vflip(img), F.vflip(lbl)
-        return img, lbl
-
-    pass
-
-
-class ExtPad(object):
-
-    def __init__(self, diviser=32):
-        self.diviser = diviser
-        pass
-
-    def __call__(self, img, lbl):
-        h, w = img.size
-        ph = (h // 32 + 1) * 32 - h if h % 32 != 0 else 0
-        pw = (w // 32 + 1) * 32 - w if w % 32 != 0 else 0
-        im = F.pad(img, (pw // 2, pw - pw // 2, ph // 2, ph - ph // 2))
-        lbl = F.pad(lbl, (pw // 2, pw - pw // 2, ph // 2, ph - ph // 2))
-        return im, lbl
-
-
-    pass
-
-
-class ExtToTensor(object):
-
-    def __init__(self, normalize=True, target_type='uint8'):
-        self.normalize = normalize
-        self.target_type = target_type
-        pass
-
-    def __call__(self, pic, lbl):
-        if self.normalize:
-            return F.to_tensor(pic), torch.from_numpy(np.array(lbl, dtype=self.target_type))
-        else:
-            return torch.from_numpy(np.array(pic, dtype=np.float32).transpose(2, 0, 1)), torch.from_numpy(
-                np.array(lbl, dtype=self.target_type))
-        pass
-
-    pass
-
-
-class ExtNormalize(object):
-
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-        pass
-
-    def __call__(self, tensor, lbl):
-        return F.normalize(tensor, self.mean, self.std), lbl
-
-    pass
-
-
-class ExtRandomCrop(object):
-
-    def __init__(self, size, padding=0, pad_if_needed=False):
-        self.size = (int(size), int(size)) if isinstance(size, numbers.Number) else size
-        self.padding = padding
-        self.pad_if_needed = pad_if_needed
-        pass
-
-    @staticmethod
-    def get_params(img, output_size):
-        w, h = img.size
-        th, tw = output_size
-        if w == tw and h == th:
-            return 0, 0, h, w
-
-        i = random.randint(0, h - th)
-        j = random.randint(0, w - tw)
-        return i, j, th, tw
-
-    def __call__(self, img, lbl):
-        assert img.size == lbl.size, 'size of img and lbl should be the same. %s, %s' % (img.size, lbl.size)
-        if self.padding > 0:
-            img = F.pad(img, self.padding)
-            lbl = F.pad(lbl, self.padding)
-
-        # pad the width if needed
-        if self.pad_if_needed and img.size[0] < self.size[1]:
-            img = F.pad(img, padding=int((1 + self.size[1] - img.size[0]) / 2))
-            lbl = F.pad(lbl, padding=int((1 + self.size[1] - lbl.size[0]) / 2))
-
-        # pad the height if needed
-        if self.pad_if_needed and img.size[1] < self.size[0]:
-            img = F.pad(img, padding=int((1 + self.size[0] - img.size[1]) / 2))
-            lbl = F.pad(lbl, padding=int((1 + self.size[0] - lbl.size[1]) / 2))
-
-        i, j, h, w = self.get_params(img, self.size)
-
-        return F.crop(img, i, j, h, w), F.crop(lbl, i, j, h, w)
-
-    pass
-
-
-class ExtResize(object):
-
-    def __init__(self, size, interpolation=Image.BILINEAR):
-        assert isinstance(size, int) or len(size) == 2
-        self.size = size
-        self.interpolation = interpolation
-        pass
-
-    def __call__(self, img, lbl):
-        return F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, Image.NEAREST)
-
-    pass
-
-
-class UnNormalize(object):
-
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-        pass
-
-    def __call__(self, tensor):
-        new_tensor = tensor.clone()
-        for t, m, s in zip(new_tensor, self.mean, self.std):
-            t.mul_(s).add_(m)
-        np_data = np.asarray(new_tensor.permute(1, 2, 0).numpy() * 255, dtype=np.uint8)
-        return Image.fromarray(np_data)
-
-    pass
-
-
-#######################################################################################################################
+from util_transform import ExtRandomCrop, ExtResize, ExtToTensor, UnNormalize, ExtNormalize
+from util_transform import ExtCompose, ExtCenterCrop, ExtRandomScale, ExtRandomHorizontalFlip
 
 
 class DataUtil(object):
@@ -304,6 +63,13 @@ class DataUtil(object):
             assert train_label_dir is not None
             if "sem_seg" in train_label_dir:
                 data_info = cls.get_ss_info_after_filter()
+
+                train_image_path = [one_data[1] for one_data in data_info]
+                train_image_label = [one_data[0] for one_data in data_info]
+            elif "ss_7_train_500" in train_label_dir:
+                data_info = cls.get_ss_info_after_filter(
+                    pkl_root="/media/ubuntu/4T/ALISURE/USS/WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_"
+                             "201_10_18_1_352_8_balance/ss_7_train_500/train_final/train_ss_self_training.pkl")
 
                 train_image_path = [one_data[1] for one_data in data_info]
                 train_image_label = [one_data[0] for one_data in data_info]
@@ -691,6 +457,10 @@ class ImageNetSegmentation(Dataset):
         if label_path is not None:
             mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
 
+            if image.size != mask.size:
+                mask = mask.resize(image.size)
+                pass
+
             image, mask = self.transform(image, mask)
             if self.return_image_info:
                 return image, mask, image_path
@@ -750,6 +520,61 @@ class ImageNetSegmentationBalance(Dataset):
         self.return_image_info = return_image_info
         self.train_images_list = None
         self.sample_num = sample_num if sample_num is not None else 1000
+        self.max_size = max_size
+
+        self.all_image_dict = {}
+        for one in self.images_list:
+            now_one = set(one[2])
+            # if len(now_one) <= 2:
+            if len(now_one) <= len(now_one):
+                for one_one in now_one:
+                    if one_one not in self.all_image_dict:
+                        self.all_image_dict[one_one] = []
+                    self.all_image_dict[one_one].append(one)
+                    pass
+                pass
+            pass
+
+        self.reset()
+        pass
+
+    def __len__(self):
+        return len(self.train_images_list)
+
+    def reset(self):
+        image_list = [random.choices(self.all_image_dict[key], k=self.sample_num) for key in self.all_image_dict]
+        self.train_images_list = []
+        for select_image in image_list:
+            self.train_images_list += select_image
+        np.random.shuffle(self.train_images_list)
+        Tools.print("Reset Sample: {}-{}".format(self.sample_num, len(self.train_images_list)))
+        pass
+
+    def __getitem__(self, idx):
+        label_path, image_path, _ = self.train_images_list[idx]
+
+        image = DataUtil.read_image(image_path, is_rgb=True, max_size=self.max_size)
+        mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
+        if image.size != mask.size:
+            mask = mask.resize(image.size)
+            pass
+
+        image, mask = self.transform(image, mask)
+        if self.return_image_info:
+            return image, mask, image_path
+        return image, mask
+
+    pass
+
+
+class ImageNetSegmentationBalance2(Dataset):
+
+    def __init__(self, images_list, transform, return_image_info=False, sample_num=None, max_size=500):
+        self.transform = transform
+        self.images_list = images_list
+        self.return_image_info = return_image_info
+        self.train_images_list = None
+        self.sample_num = sample_num if sample_num is not None else 10000
         self.max_size = max_size
 
         self.all_image_dict = {}
@@ -917,7 +742,10 @@ class DatasetUtil(object):
 
             label_image_path = [[one_data["label_path"], one_data["image_path"], one_data["label"]] for one_data in data_info]
             transform_train, transform_test = MyTransform.transform_train_ss(image_size=image_size)
+            ############################################################################################################
             train_class = ImageNetSegmentationBalance if is_balance else ImageNetSegmentation
+            # train_class = ImageNetSegmentationBalance2 if is_balance else ImageNetSegmentation
+            ############################################################################################################
             train = train_class(label_image_path, transform_train,
                                 return_image_info=return_image_info, max_size=max_size)
 
@@ -967,7 +795,12 @@ class DatasetUtil(object):
         ################################################################################################################
         elif dataset_type == cls.dataset_type_ss_scale_train:
             data_info = DataUtil.get_ss_info(data_root=data_root, split="inference_train")
-            data_info = data_info[len(data_info) // 2:]#[::-1]
+            # data_info = data_info[:len(data_info) // 6]
+            # data_info = data_info[len(data_info) // 6 * 5:][::-1]
+            # data_info = data_info[len(data_info) // 6 * 2:len(data_info) // 6 * 3]
+            # data_info = data_info[len(data_info) // 6:len(data_info) // 6 * 2]
+            # data_info = data_info[len(data_info) // 6 * 3:len(data_info) // 6 * 4][::-1]
+            # data_info = data_info[len(data_info) // 6 * 4:len(data_info) // 6 * 5][::-1]
             data_info = data_info[::20] if sampling else data_info
             label_image_path = [[None, one_data["image_path"], None] for one_data in data_info]
 

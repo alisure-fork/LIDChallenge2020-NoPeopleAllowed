@@ -257,7 +257,8 @@ class SSRunner(object):
                 preds = outputs.max(dim=1)[1].numpy()
 
                 if save_path:
-                    Image.open(image_info_list[0]).save(Tools.new_dir(os.path.join(save_path, basename)))
+                    Image.open(image_info_list[0]).convert("RGB").save(
+                        Tools.new_dir(os.path.join(save_path, basename)))
                     DataUtil.gray_to_color(np.asarray(preds[0], dtype=np.uint8)).save(
                         os.path.join(save_path, basename.replace(".JPEG", ".png")))
                     Image.fromarray(np.asarray(preds[0], dtype=np.uint8)).save(final_name)
@@ -334,16 +335,16 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
-        self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
         # 流程控制
-        self.only_train_ss = False  # 是否训练SS
+        self.only_train_ss = True  # 是否训练SS
         self.is_balance_data = True  # 是否平衡数据
         self.only_eval_ss = False  # 是否评估SS
-        self.only_inference_ss = True  # 是否推理SS
+        self.only_inference_ss = False  # 是否推理SS
         self.inference_ss_train = True  # 是否推理训练集
         self.inference_ss_val = False  # 是否推理验证集
 
@@ -352,10 +353,9 @@ class Config(object):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
         # 其他方法生成的伪标签
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam/1_CAMNet_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/1_200_32_256_0.5"
-        # self.label_path = "/mnt/4T/ALISURE/USS/WSS_CAM/cam_4/2_1_200_32_256_0.5"
-        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
+        # self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
+        self.label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_SS_0602_EVAL/" \
+                          "3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500/train_final"
 
         # 参数
         self.ss_num_classes = 201
@@ -378,7 +378,7 @@ class Config(object):
         # self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
         self.arch, self.arch_name = deeplabv3plus_resnet152, "DeepLabV3PlusResNet152"
 
-        run_name = "3"
+        run_name = "3_self_training"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
             self.ss_save_epoch_freq, self.ss_size, self.output_stride, "_balance" if self.is_balance_data else "")
@@ -463,80 +463,6 @@ class Config(object):
 
 
 """
-../../../WSS_Model_SS/4_DeepLabV3PlusResNet50_201_10_18_1_352/ss_final_10.pth
-Overall Acc: 0.818186
-Mean Acc: 0.662312
-FreqW Acc: 0.715434
-Mean IoU: 0.470527
-
-Overall Acc: 0.843774
-Mean Acc: 0.621268
-FreqW Acc: 0.750521
-Mean IoU: 0.461591
-
-
-../../../WSS_Model_SS/5_DeepLabV3PlusResNet50_201_10_12_1_352_balance/ss_8.pth
-Overall Acc: 0.819173
-Mean Acc: 0.671673
-FreqW Acc: 0.717279
-Mean IoU: 0.460044
-
-Overall Acc: 0.846122
-Mean Acc: 0.633350
-FreqW Acc: 0.753838
-Mean IoU: 0.458760
-
-
-../../../WSS_Model_SS/6_DeepLabV3PlusResNet50_201_10_18_1_352_balance/ss_8.pth  # all data balance
-Overall Acc: 0.820996
-Mean Acc: 0.685476
-FreqW Acc: 0.720114
-Mean IoU: 0.473003
-
-Overall Acc: 0.848850  # 3 scales (1.0, 0.5, 1.5)
-Mean Acc: 0.643933
-FreqW Acc: 0.758975
-Mean IoU: 0.465997
-
-Overall Acc: 0.855283  # 4 scales (1.0, 0.5, 1.5, 2.0)
-Mean Acc: 0.650679
-FreqW Acc: 0.766168
-Mean IoU: 0.473421
-
-Overall Acc: 0.855283  # 7 scales (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-Overall Acc: 0.855420
-Mean Acc: 0.659207
-FreqW Acc: 0.766650
-Mean IoU: 0.475058
-
-
-../../../WSS_Model_SS/7_DeepLabV3PlusResNet101_201_10_18_1_352_balance/ss_7.pth  # all data balance
-Overall Acc: 0.824271
-Mean Acc: 0.677893
-FreqW Acc: 0.724587
-Mean IoU: 0.482257
-
-2021-04-25 18:12:37 
-Overall Acc: 0.856393
-Mean Acc: 0.650578
-FreqW Acc: 0.767412
-Mean IoU: 0.484445
-
-
-output_stride = 16
-../../../WSS_Model_SS_0602/2_DeepLabV3PlusResNet152_201_10_18_1_352_balance/ss_7_5554_0.4877185673519882.pth
-Overall Acc: 0.828434
-Mean Acc: 0.681685
-FreqW Acc: 0.729250
-Mean IoU: 0.487719
-
-2021-06-05 00:13:04 
-Overall Acc: 0.859463
-Mean Acc: 0.658986
-FreqW Acc: 0.771794
-Mean IoU: 0.493816
-
-
 output_stride = 8
 ../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth
 Overall Acc: 0.835645
@@ -544,29 +470,40 @@ Mean Acc: 0.696309
 FreqW Acc: 0.737874
 Mean IoU: 0.496127
 
-max_size_inference = 0
+ss_7_scales_1_0 max_size_inference = 0
 Overall Acc: 0.855468
 Mean Acc: 0.699628
 FreqW Acc: 0.767776
 Mean IoU: 0.491615
-max_size_inference = 500
+ss_7_scales_1_500 max_size_inference = 500
 Overall Acc: 0.855467
 Mean Acc: 0.700577
 FreqW Acc: 0.767827
 Mean IoU: 0.492327
-
-max_size_inference = 0
+ss_7_scales_7_0 max_size_inference = 0
 2021-06-07 13:38:23 
 Overall Acc: 0.865002
 Mean Acc: 0.680683
 FreqW Acc: 0.777233
 Mean IoU: 0.506402
-max_size_inference = 500
+ss_7_scales_7_500 max_size_inference = 500
 2021-06-07 13:41:24 
 Overall Acc: 0.863998
 Mean Acc: 0.682085
 FreqW Acc: 0.776430
 Mean IoU: 0.506957
+ss_7_scales_4_500 max_size_inference = 500
+2021-06-08 16:39:10 
+Overall Acc: 0.860604
+Mean Acc: 0.698268
+FreqW Acc: 0.773550
+Mean IoU: 0.503041
+ss_7_scales_6_500 max_size_inference = 500
+2021-06-08 18:51:16 
+Overall Acc: 0.865059
+Mean Acc: 0.697353
+FreqW Acc: 0.777911
+Mean IoU: 0.508361
 """
 
 

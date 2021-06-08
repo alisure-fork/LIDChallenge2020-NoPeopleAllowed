@@ -289,8 +289,8 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
@@ -398,9 +398,16 @@ class Config(object):
 
         # 9 Resnet152 output_stride = 8
         # scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
-        scales = (1.0, 0.75, 0.5, 1.5, 2.0)
-        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10.pth"
-        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10_scales_{}_500".format(len(scales))
+        # scales = (1.0, 0.75, 0.5, 1.5, 2.0)
+        # model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10.pth"
+        # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_final_10_scales_{}_500".format(len(scales))
+
+        # 10 Resnet152 output_stride = 8
+        # scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        # scales = (1.0, 0.75, 1.25, 1.5)
+        scales = (1.0, 0.75, 1.25, 1.5, 1.75, 2.0)
+        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
+        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_scales_{}_500".format(len(scales))
 
         return scales, model_file_name, eval_save_path
 
@@ -499,29 +506,40 @@ Mean Acc: 0.696309
 FreqW Acc: 0.737874
 Mean IoU: 0.496127
 
-max_size_inference = 0
+ss_7_scales_1_0 max_size_inference = 0
 Overall Acc: 0.855468
 Mean Acc: 0.699628
 FreqW Acc: 0.767776
 Mean IoU: 0.491615
-max_size_inference = 500
+ss_7_scales_1_500 max_size_inference = 500
 Overall Acc: 0.855467
 Mean Acc: 0.700577
 FreqW Acc: 0.767827
 Mean IoU: 0.492327
-
-max_size_inference = 0
+ss_7_scales_7_0 max_size_inference = 0
 2021-06-07 13:38:23 
 Overall Acc: 0.865002
 Mean Acc: 0.680683
 FreqW Acc: 0.777233
 Mean IoU: 0.506402
-max_size_inference = 500
+ss_7_scales_7_500 max_size_inference = 500
 2021-06-07 13:41:24 
 Overall Acc: 0.863998
 Mean Acc: 0.682085
 FreqW Acc: 0.776430
 Mean IoU: 0.506957
+ss_7_scales_4_500 max_size_inference = 500
+2021-06-08 16:39:10 
+Overall Acc: 0.860604
+Mean Acc: 0.698268
+FreqW Acc: 0.773550
+Mean IoU: 0.503041
+ss_7_scales_6_500 max_size_inference = 500 (1.0, 0.75, 1.25, 1.5, 1.75, 2.0)
+2021-06-08 18:51:16 
+Overall Acc: 0.865059
+Mean Acc: 0.697353
+FreqW Acc: 0.777911
+Mean IoU: 0.508361
 """
 
 
