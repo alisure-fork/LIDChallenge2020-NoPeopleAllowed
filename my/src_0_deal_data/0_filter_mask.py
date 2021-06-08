@@ -5,7 +5,13 @@ from glob import glob
 from tqdm import tqdm
 from PIL import Image
 from alisuretool.Tools import Tools
-from tools.read_info import read_image_info
+
+
+def read_image_info(image_info_root):
+    image_info_path = os.path.join(image_info_root, "deal", "image_info_list_change_person2.pkl")
+    # image_info_list = Tools.read_from_pkl(image_info_path)[::200]
+    image_info_list = Tools.read_from_pkl(image_info_path)
+    return image_info_list
 
 
 def get_train_image_info(image_info_list, cam_path):
