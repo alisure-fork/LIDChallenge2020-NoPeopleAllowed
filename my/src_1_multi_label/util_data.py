@@ -190,7 +190,7 @@ class DataUtil(object):
         if max_size > 0:
             value1 = max_size if im.size[0] > im.size[1] else im.size[0] * max_size // im.size[1]
             value2 = im.size[1] * max_size // im.size[0] if im.size[0] > im.size[1] else max_size
-            im = im.resize((value1, value2))
+            im = im.resize((value1, value2), resample=Image.NEAREST)
             pass
         return im
 
@@ -457,10 +457,6 @@ class ImageNetSegmentation(Dataset):
         if label_path is not None:
             mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
 
-            if image.size != mask.size:
-                mask = mask.resize(image.size)
-                pass
-
             image, mask = self.transform(image, mask)
             if self.return_image_info:
                 return image, mask, image_path
@@ -555,9 +551,6 @@ class ImageNetSegmentationBalance(Dataset):
 
         image = DataUtil.read_image(image_path, is_rgb=True, max_size=self.max_size)
         mask = DataUtil.read_image(label_path, is_rgb=False, max_size=self.max_size)
-        if image.size != mask.size:
-            mask = mask.resize(image.size)
-            pass
 
         image, mask = self.transform(image, mask)
         if self.return_image_info:

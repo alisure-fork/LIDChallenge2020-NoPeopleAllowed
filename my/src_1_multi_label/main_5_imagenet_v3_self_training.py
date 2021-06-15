@@ -68,11 +68,15 @@ class SSRunner(object):
         # self.eval_ss(epoch=0)
         best_iou = 0.0
 
-        for epoch in range(start_epoch, self.config.ss_epoch_num):
+        for epoch in range(self.config.ss_epoch_num):
             Tools.print()
             Tools.print('Epoch:{:2d}, lr={:.6f} lr2={:.6f}'.format(
                 epoch, self.optimizer.param_groups[0]['lr'], self.optimizer.param_groups[1]['lr']),
                 txt_path=self.config.ss_save_result_txt)
+
+            if epoch < start_epoch:
+                self.scheduler.step()
+                continue
 
             ###########################################################################
             # 1 训练模型
@@ -81,9 +85,9 @@ class SSRunner(object):
             if self.config.is_balance_data:
                 self.dataset_ss_train.reset()
                 pass
-            for i, (inputs, labels) in tqdm(enumerate(self.data_loader_ss_train),
+            for i, (inputs, _labels) in tqdm(enumerate(self.data_loader_ss_train),
                                             total=len(self.data_loader_ss_train)):
-                inputs, labels = inputs.float().cuda(), labels.long().cuda()
+                inputs, labels = inputs.float().cuda(), _labels.long().cuda()
                 self.optimizer.zero_grad()
 
                 result = self.net(inputs)
@@ -326,7 +330,11 @@ def train(config):
     if config.only_train_ss:
         # model_file = "../../../WSS_Model_SS_0602/1_DeepLabV3PlusResNet152_201_10_24_1_352_balance/ss_5.pth"
         # ss_runner.train_ss(start_epoch=6, model_file_name=model_file)
+
         ss_runner.train_ss(start_epoch=0, model_file_name=None)
+
+        # model_file = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
+        # ss_runner.train_ss(start_epoch=6, model_file_name=model_file)
         return
 
     pass
@@ -335,9 +343,9 @@ def train(config):
 class Config(object):
 
     def __init__(self):
-        self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
+        # self.gpu_id_1, self.gpu_id_4 = "0", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "1", "0, 1, 2, 3"
-        # self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
+        self.gpu_id_1, self.gpu_id_4 = "2", "0, 1, 2, 3"
         # self.gpu_id_1, self.gpu_id_4 = "3", "0, 1, 2, 3"
 
         # 流程控制
@@ -345,17 +353,17 @@ class Config(object):
         self.is_balance_data = True  # 是否平衡数据
         self.only_eval_ss = False  # 是否评估SS
         self.only_inference_ss = False  # 是否推理SS
-        self.inference_ss_train = True  # 是否推理训练集
-        self.inference_ss_val = False  # 是否推理验证集
+        self.inference_ss_train = False  # 是否推理训练集
+        self.inference_ss_val = True  # 是否推理验证集
 
         # 测试相关
         self.scales, self.model_file_name, self.eval_save_path = self.inference_param()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.gpu_id_4) if self.only_train_ss else str(self.gpu_id_1)
 
         # 其他方法生成的伪标签
-        # self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
-        self.label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_SS_0602_EVAL/" \
-                          "3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500/train_final"
+        self.label_path = "/media/ubuntu/4T/ALISURE/USS/ConTa/pseudo_mask/result/2/sem_seg"
+        # self.label_path = "/media/ubuntu/4T/ALISURE/USS/WSS_Model_SS_0602_EVAL/" \
+        #                   "3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500/train_final_resize"
 
         # 参数
         self.ss_num_classes = 201
@@ -378,7 +386,7 @@ class Config(object):
         # self.arch, self.arch_name = deeplabv3plus_resnet101, "DeepLabV3PlusResNet101"
         self.arch, self.arch_name = deeplabv3plus_resnet152, "DeepLabV3PlusResNet152"
 
-        run_name = "3_self_training"
+        run_name = "4_self_training_temp2"
         self.model_name = "{}_{}_{}_{}_{}_{}_{}_{}{}".format(
             run_name, self.arch_name, self.ss_num_classes, self.ss_epoch_num, self.ss_batch_size,
             self.ss_save_epoch_freq, self.ss_size, self.output_stride, "_balance" if self.is_balance_data else "")
@@ -443,9 +451,14 @@ class Config(object):
         # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_0_2221_scales_{}_500".format(len(scales))
 
         # 9 Resnet 50 or 152 output_stride = 8 train
-        scales = (1.0, )
-        model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
-        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500"
+        # scales = (1.0, )
+        # model_file_name = "../../../WSS_Model_SS_0602/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_8887_0.49612685291103387.pth"
+        # eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_7_train_500"
+
+        # 10 self-training
+        scales = (1.0, 0.75, 0.5, 1.25, 1.5, 1.75, 2.0)
+        model_file_name = "../../../WSS_Model_SS_0602/3_self_training_resume_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_6_9998_0.5015402698782628.pth"
+        eval_save_path = "../../../WSS_Model_SS_0602_EVAL/3_self_training_resume_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_6_9998_scales_{}_500".format(len(scales))
 
         return scales, model_file_name, eval_save_path
 
@@ -504,6 +517,16 @@ Overall Acc: 0.865059
 Mean Acc: 0.697353
 FreqW Acc: 0.777911
 Mean IoU: 0.508361
+
+
+../../../WSS_Model_SS_0602/3_self_training_resume_DeepLabV3PlusResNet152_201_10_18_1_352_8_balance/ss_6_9998_0.5015402698782628.pth
+ss_7_scales_6_500 max_size_inference = 500
+2021-06-09 22:24:36 
+Overall Acc: 0.867581
+Mean Acc: 0.690415
+FreqW Acc: 0.781894
+Mean IoU: 0.510991
+
 """
 
 
